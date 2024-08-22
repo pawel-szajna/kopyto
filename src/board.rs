@@ -4,6 +4,12 @@ pub type Side = usize;
 const WHITE: Side = 0;
 const BLACK: Side = 1;
 
+const MASK_ROOK_QUEENSIDE: [u64; 2] = [1u64, 1u64 << (7 * 8)];
+const MASK_ROOK_KINGSIDE: [u64; 2] = [1u64 << 7, 1u64 << (7 * 8 + 7)];
+// const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
+// const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
+
+#[derive(PartialEq, Eq)]
 pub enum Piece {
     King,
     Queen,
@@ -404,12 +410,29 @@ impl Board {
 
         match self.check_piece(side, from_mask) {
             None => panic!("Internal error: invalid move"),
-            Some(Piece::King) => self.put_king(side, to_mask),
             Some(Piece::Queen) => self.put_queen(side, to_mask),
-            Some(Piece::Rook) => self.put_rook(side, to_mask),
+            Some(Piece::Rook) => {
+                if self.castle_queenside[side] && from_mask == MASK_ROOK_QUEENSIDE[side] {
+                    self.castle_queenside[side] = false;
+                } else if self.castle_kingside[side] && from_mask == MASK_ROOK_KINGSIDE[side] {
+                    self.castle_kingside[side] = false;
+                }
+                self.put_rook(side, to_mask)
+            }
             Some(Piece::Bishop) => self.put_bishop(side, to_mask),
             Some(Piece::Knight) => self.put_knight(side, to_mask),
             Some(Piece::Pawn) => self.put_pawn(side, to_mask),
+            Some(Piece::King) => {
+                // if self.castle_queenside[side]
+                //     && to_mask == MASK_CASTLE_QUEENSIDE[side]
+                //     && self.check_piece(side, MASK_ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+                // {
+                //
+                // }
+                self.put_king(side, to_mask);
+                self.castle_queenside[side] = false;
+                self.castle_kingside[side] = false;
+            }
         }
 
         self.remove_piece(from_mask);
