@@ -12,5 +12,8 @@ fn main() {
     println!("{}", board.export_graph());
     println!("{}", board.export_fen());
 
+    board.unmake_move();
+    println!("{}", board.export_graph());
+
     board.print_info();
 }

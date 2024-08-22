@@ -23,6 +23,31 @@ pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 
+struct History {
+    from: u64,
+    to: u64,
+    castle_kingside: ColorBool,
+    castle_queenside: ColorBool,
+    capture: Option<Piece>,
+}
+
+impl History {
+    pub fn new(
+        from: u64,
+        to: u64,
+        castle_kingside: ColorBool,
+        castle_queenside: ColorBool,
+    ) -> Self {
+        Self {
+            from,
+            to,
+            castle_kingside,
+            castle_queenside,
+            capture: None,
+        }
+    }
+}
+
 pub struct Board {
     kings: ColorBitboard,
     queens: ColorBitboard,
@@ -38,6 +63,8 @@ pub struct Board {
     castle_queenside: ColorBool,
 
     current_color: Side,
+
+    history: Vec<History>,
 }
 
 fn coords_to_mask(file: usize, rank: usize) -> u64 {
@@ -94,6 +121,8 @@ impl Board {
             castle_queenside: [true, true],
 
             current_color: WHITE,
+
+            history: Vec::new(),
         }
     }
 
@@ -300,39 +329,50 @@ impl Board {
         result
     }
 
-    fn put_piece(&mut self, side: Side, mask: u64) {
+    fn put_piece_occupancy(&mut self, side: Side, mask: u64) {
         self.occupied[side] |= mask;
         self.any_piece |= mask;
     }
 
     fn put_king(&mut self, side: Side, mask: u64) {
         self.kings[side] |= mask;
-        self.put_piece(side, mask);
+        self.put_piece_occupancy(side, mask);
     }
 
     fn put_queen(&mut self, side: Side, mask: u64) {
         self.queens[side] |= mask;
-        self.put_piece(side, mask);
+        self.put_piece_occupancy(side, mask);
     }
 
     fn put_rook(&mut self, side: Side, mask: u64) {
         self.rooks[side] |= mask;
-        self.put_piece(side, mask);
+        self.put_piece_occupancy(side, mask);
     }
 
     fn put_bishop(&mut self, side: Side, mask: u64) {
         self.bishops[side] |= mask;
-        self.put_piece(side, mask);
+        self.put_piece_occupancy(side, mask);
     }
 
     fn put_knight(&mut self, side: Side, mask: u64) {
         self.knights[side] |= mask;
-        self.put_piece(side, mask);
+        self.put_piece_occupancy(side, mask);
     }
 
     fn put_pawn(&mut self, side: Side, mask: u64) {
         self.pawns[side] |= mask;
-        self.put_piece(side, mask);
+        self.put_piece_occupancy(side, mask);
+    }
+
+    fn put_piece(&mut self, side: Side, mask: u64, piece: Piece) {
+        match piece {
+            Piece::King => self.put_king(side, mask),
+            Piece::Queen => self.put_queen(side, mask),
+            Piece::Rook => self.put_rook(side, mask),
+            Piece::Bishop => self.put_bishop(side, mask),
+            Piece::Knight => self.put_knight(side, mask),
+            Piece::Pawn => self.put_pawn(side, mask),
+        }
     }
 
     fn remove_piece(&mut self, mask: u64) {
@@ -402,39 +442,59 @@ impl Board {
         let from_mask = 1u64 << from;
         let to_mask = 1u64 << to;
 
+        let side = self.check_side(from_mask);
+        let opponent = if side == WHITE { BLACK } else { WHITE };
+
+        let mut history_entry = History::new(
+            from_mask,
+            to_mask,
+            self.castle_kingside,
+            self.castle_queenside,
+        );
+
         if self.has_piece(to_mask) {
             self.remove_piece(to_mask);
+            history_entry.capture = self.check_piece(opponent, to_mask);
         }
 
-        let side = self.check_side(from_mask);
+        let piece_type = self.check_piece(side, from_mask).unwrap();
 
-        match self.check_piece(side, from_mask) {
-            None => panic!("Internal error: invalid move"),
-            Some(Piece::Queen) => self.put_queen(side, to_mask),
-            Some(Piece::Rook) => {
-                if self.castle_queenside[side] && from_mask == MASK_ROOK_QUEENSIDE[side] {
-                    self.castle_queenside[side] = false;
-                } else if self.castle_kingside[side] && from_mask == MASK_ROOK_KINGSIDE[side] {
-                    self.castle_kingside[side] = false;
-                }
-                self.put_rook(side, to_mask)
-            }
-            Some(Piece::Bishop) => self.put_bishop(side, to_mask),
-            Some(Piece::Knight) => self.put_knight(side, to_mask),
-            Some(Piece::Pawn) => self.put_pawn(side, to_mask),
-            Some(Piece::King) => {
-                // if self.castle_queenside[side]
-                //     && to_mask == MASK_CASTLE_QUEENSIDE[side]
-                //     && self.check_piece(side, MASK_ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
-                // {
-                //
-                // }
-                self.put_king(side, to_mask);
+        if piece_type == Piece::Rook {
+            if self.castle_queenside[side] && from_mask == MASK_ROOK_QUEENSIDE[side] {
                 self.castle_queenside[side] = false;
+            } else if self.castle_kingside[side] && from_mask == MASK_ROOK_KINGSIDE[side] {
                 self.castle_kingside[side] = false;
             }
         }
 
+        if piece_type == Piece::King {
+            self.castle_queenside[side] = false;
+            self.castle_kingside[side] = false;
+        }
+
+        self.put_piece(side, to_mask, piece_type);
         self.remove_piece(from_mask);
+        self.history.push(history_entry);
+    }
+
+    pub fn unmake_move(&mut self) {
+        if self.history.is_empty() {
+            panic!("Cannot unmake move with no moves");
+        }
+
+        let last_move = self.history.pop().unwrap();
+        let side = self.check_side(last_move.to);
+        let opponent = if side == WHITE { BLACK } else { WHITE };
+
+        self.castle_kingside = last_move.castle_kingside;
+        self.castle_queenside = last_move.castle_queenside;
+
+        let piece_type = self.check_piece(side, last_move.to);
+        self.remove_piece(last_move.to);
+        self.put_piece(side, last_move.from, piece_type.unwrap());
+
+        if last_move.capture.is_some() {
+            self.put_piece(opponent, last_move.to, last_move.capture.unwrap());
+        }
     }
 }
