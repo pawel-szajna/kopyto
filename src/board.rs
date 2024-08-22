@@ -1,6 +1,17 @@
+use std::str::Chars;
+
 pub type Side = usize;
 const WHITE: Side = 0;
 const BLACK: Side = 1;
+
+pub enum Piece {
+    King,
+    Queen,
+    Rook,
+    Bishop,
+    Knight,
+    Pawn,
+}
 
 pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
@@ -23,7 +34,40 @@ pub struct Board {
     current_color: Side,
 }
 
-fn coords_to_index(file: usize, rank: usize) -> usize {
+fn coords_to_mask(file: usize, rank: usize) -> u64 {
+    1u64 << (rank * 8usize + file)
+}
+
+fn str_to_idx(pos: &str) -> usize {
+    fn get_file(pos: &mut Chars) -> usize {
+        match pos.next() {
+            Some('a') => 0,
+            Some('b') => 1,
+            Some('c') => 2,
+            Some('d') => 3,
+            Some('e') => 4,
+            Some('f') => 5,
+            Some('g') => 6,
+            Some('h') => 7,
+            _ => panic!("Invalid file"),
+        }
+    }
+    fn get_rank(pos: &mut Chars) -> usize {
+        match pos.next() {
+            Some('1') => 0,
+            Some('2') => 1,
+            Some('3') => 2,
+            Some('4') => 3,
+            Some('5') => 4,
+            Some('6') => 5,
+            Some('7') => 6,
+            Some('8') => 7,
+            _ => panic!("Invalid rank"),
+        }
+    }
+    let mut pos = pos.chars();
+    let file = get_file(&mut pos);
+    let rank = get_rank(&mut pos);
     rank * 8 + file
 }
 
@@ -54,7 +98,6 @@ impl Board {
         for rank in 0..8 {
             let mut file = 0;
             loop {
-                let idx = coords_to_index(file, 7 - rank);
                 match fen.next() {
                     None => return board,
                     Some('/') => break,
@@ -66,18 +109,18 @@ impl Board {
                     Some('6') => file += 5,
                     Some('7') => file += 6,
                     Some('8') => file += 7,
-                    Some('k') => board.put_king(BLACK, idx),
-                    Some('K') => board.put_king(WHITE, idx),
-                    Some('q') => board.put_queen(BLACK, idx),
-                    Some('Q') => board.put_queen(WHITE, idx),
-                    Some('r') => board.put_rook(BLACK, idx),
-                    Some('R') => board.put_rook(WHITE, idx),
-                    Some('p') => board.put_pawn(BLACK, idx),
-                    Some('P') => board.put_pawn(WHITE, idx),
-                    Some('n') => board.put_knight(BLACK, idx),
-                    Some('N') => board.put_knight(WHITE, idx),
-                    Some('b') => board.put_bishop(BLACK, idx),
-                    Some('B') => board.put_bishop(WHITE, idx),
+                    Some('k') => board.put_king(BLACK, coords_to_mask(file, 7 - rank)),
+                    Some('K') => board.put_king(WHITE, coords_to_mask(file, 7 - rank)),
+                    Some('q') => board.put_queen(BLACK, coords_to_mask(file, 7 - rank)),
+                    Some('Q') => board.put_queen(WHITE, coords_to_mask(file, 7 - rank)),
+                    Some('r') => board.put_rook(BLACK, coords_to_mask(file, 7 - rank)),
+                    Some('R') => board.put_rook(WHITE, coords_to_mask(file, 7 - rank)),
+                    Some('p') => board.put_pawn(BLACK, coords_to_mask(file, 7 - rank)),
+                    Some('P') => board.put_pawn(WHITE, coords_to_mask(file, 7 - rank)),
+                    Some('n') => board.put_knight(BLACK, coords_to_mask(file, 7 - rank)),
+                    Some('N') => board.put_knight(WHITE, coords_to_mask(file, 7 - rank)),
+                    Some('b') => board.put_bishop(BLACK, coords_to_mask(file, 7 - rank)),
+                    Some('B') => board.put_bishop(WHITE, coords_to_mask(file, 7 - rank)),
                     _ => {}
                 }
                 file += 1;
@@ -90,42 +133,42 @@ impl Board {
     pub fn from_starting_position() -> Board {
         let mut board = Board::new();
 
-        board.put_king(WHITE, coords_to_index(4, 0));
-        board.put_king(BLACK, coords_to_index(4, 7));
+        board.put_king(WHITE, coords_to_mask(4, 0));
+        board.put_king(BLACK, coords_to_mask(4, 7));
 
-        board.put_queen(WHITE, coords_to_index(3, 0));
-        board.put_queen(BLACK, coords_to_index(3, 7));
+        board.put_queen(WHITE, coords_to_mask(3, 0));
+        board.put_queen(BLACK, coords_to_mask(3, 7));
 
-        board.put_rook(WHITE, coords_to_index(0, 0));
-        board.put_rook(WHITE, coords_to_index(7, 0));
-        board.put_rook(BLACK, coords_to_index(0, 7));
-        board.put_rook(BLACK, coords_to_index(7, 7));
+        board.put_rook(WHITE, coords_to_mask(0, 0));
+        board.put_rook(WHITE, coords_to_mask(7, 0));
+        board.put_rook(BLACK, coords_to_mask(0, 7));
+        board.put_rook(BLACK, coords_to_mask(7, 7));
 
-        board.put_bishop(WHITE, coords_to_index(2, 0));
-        board.put_bishop(WHITE, coords_to_index(5, 0));
-        board.put_bishop(BLACK, coords_to_index(2, 7));
-        board.put_bishop(BLACK, coords_to_index(5, 7));
+        board.put_bishop(WHITE, coords_to_mask(2, 0));
+        board.put_bishop(WHITE, coords_to_mask(5, 0));
+        board.put_bishop(BLACK, coords_to_mask(2, 7));
+        board.put_bishop(BLACK, coords_to_mask(5, 7));
 
-        board.put_knight(WHITE, coords_to_index(1, 0));
-        board.put_knight(WHITE, coords_to_index(6, 0));
-        board.put_knight(BLACK, coords_to_index(1, 7));
-        board.put_knight(BLACK, coords_to_index(6, 7));
+        board.put_knight(WHITE, coords_to_mask(1, 0));
+        board.put_knight(WHITE, coords_to_mask(6, 0));
+        board.put_knight(BLACK, coords_to_mask(1, 7));
+        board.put_knight(BLACK, coords_to_mask(6, 7));
 
         for file in 0..8 {
-            board.put_pawn(WHITE, coords_to_index(file, 1));
-            board.put_pawn(BLACK, coords_to_index(file, 6));
+            board.put_pawn(WHITE, coords_to_mask(file, 1));
+            board.put_pawn(BLACK, coords_to_mask(file, 6));
         }
 
         board
     }
 
     fn mask_to_symbol(&self, mask: u64) -> char {
-        const SYMBOLS_KING: [char; 2] = ['K','k'];
-        const SYMBOLS_QUEEN: [char; 2] = ['Q','q'];
-        const SYMBOLS_ROOK: [char; 2] = ['R','r'];
-        const SYMBOLS_BISHOP: [char; 2] = ['B','b'];
-        const SYMBOLS_KNIGHT: [char; 2] = ['N','n'];
-        const SYMBOLS_PAWN: [char; 2] = ['P','p'];
+        const SYMBOLS_KING: [char; 2] = ['K', 'k'];
+        const SYMBOLS_QUEEN: [char; 2] = ['Q', 'q'];
+        const SYMBOLS_ROOK: [char; 2] = ['R', 'r'];
+        const SYMBOLS_BISHOP: [char; 2] = ['B', 'b'];
+        const SYMBOLS_KNIGHT: [char; 2] = ['N', 'n'];
+        const SYMBOLS_PAWN: [char; 2] = ['P', 'p'];
 
         let side = ((self.occupied[WHITE] & mask) == 0) as usize;
 
@@ -144,6 +187,22 @@ impl Board {
         } else {
             '!'
         }
+    }
+
+    pub fn print_info(&self) {
+        println!("occupied * {0:#066b}", self.any_piece);
+        println!("occupied W {0:#066b}", self.occupied[WHITE]);
+        println!("occupied B {0:#066b}", self.occupied[BLACK]);
+        println!("king W     {0:#066b}", self.kings[WHITE]);
+        println!("king B     {0:#066b}", self.kings[BLACK]);
+        println!("queen W    {0:#066b}", self.queens[WHITE]);
+        println!("queen B    {0:#066b}", self.queens[BLACK]);
+        println!("bishop W   {0:#066b}", self.bishops[WHITE]);
+        println!("bishop B   {0:#066b}", self.bishops[BLACK]);
+        println!("knight W   {0:#066b}", self.knights[WHITE]);
+        println!("knight B   {0:#066b}", self.knights[BLACK]);
+        println!("pawn W     {0:#066b}", self.pawns[WHITE]);
+        println!("pawn B     {0:#066b}", self.pawns[BLACK]);
     }
 
     pub fn export_fen(&self) -> String {
@@ -179,13 +238,25 @@ impl Board {
         }
 
         result.push(' ');
-        result.push(if self.current_color == WHITE { 'w' } else { 'b' });
+        result.push(if self.current_color == WHITE {
+            'w'
+        } else {
+            'b'
+        });
 
         result.push(' ');
-        if self.castle_kingside[WHITE] { result.push('K'); }
-        if self.castle_queenside[WHITE] { result.push('Q'); }
-        if self.castle_kingside[BLACK] { result.push('k'); }
-        if self.castle_queenside[BLACK] { result.push('q'); }
+        if self.castle_kingside[WHITE] {
+            result.push('K');
+        }
+        if self.castle_queenside[WHITE] {
+            result.push('Q');
+        }
+        if self.castle_kingside[BLACK] {
+            result.push('k');
+        }
+        if self.castle_queenside[BLACK] {
+            result.push('q');
+        }
 
         result.push(' ');
         result.push('-'); // en passant
@@ -201,28 +272,23 @@ impl Board {
 
     pub fn export_graph(&self) -> String {
         let mut result = String::new();
-        // println!("occupied * : {:#066b}", self.any_piece);
-        // println!("occupied W : {:#066b}", self.occupied[WHITE]);
-        // println!("occupied B : {:#066b}", self.occupied[BLACK]);
-        // println!("king W     : {:#066b}", self.kings[WHITE]);
-        // println!("king B     : {:#066b}", self.kings[BLACK]);
-        // println!("queen W    : {:#066b}", self.queens[WHITE]);
-        // println!("queen B    : {:#066b}", self.queens[BLACK]);
+
         for rank in 0u64..8u64 {
             result.push_str(format!("{} ", 8 - rank).as_str());
             for file in 0u64..8u64 {
                 let idx = (7 - rank) * 8 + file;
                 let mask = 1u64 << idx;
-                // println!("rank: {}, file: {}, idx: {}, mask: {:#066b}", rank, file, idx, mask);
-                if (self.any_piece & mask) == 0 {
-                    result.push('.');
+
+                result.push(if (self.any_piece & mask) == 0 {
+                    '.'
                 } else {
-                    result.push(self.mask_to_symbol(mask));
-                }
+                    self.mask_to_symbol(mask)
+                });
                 result.push(' ');
             }
             result.push('\n');
         }
+
         result.push_str("  A B C D E F G H");
 
         result
@@ -233,43 +299,119 @@ impl Board {
         self.any_piece |= mask;
     }
 
-    fn put_king(&mut self, side: Side, square: usize) {
-        let mask = 1u64 << square;
+    fn put_king(&mut self, side: Side, mask: u64) {
         self.kings[side] |= mask;
         self.put_piece(side, mask);
     }
 
-    fn put_queen(&mut self, side: Side, square: usize) {
-        let mask = 1u64 << square;
+    fn put_queen(&mut self, side: Side, mask: u64) {
         self.queens[side] |= mask;
         self.put_piece(side, mask);
     }
 
-    fn put_rook(&mut self, side: Side, square: usize) {
-        let mask = 1u64 << square;
+    fn put_rook(&mut self, side: Side, mask: u64) {
         self.rooks[side] |= mask;
         self.put_piece(side, mask);
     }
 
-    fn put_bishop(&mut self, side: Side, square: usize) {
-        let mask = 1u64 << square;
+    fn put_bishop(&mut self, side: Side, mask: u64) {
         self.bishops[side] |= mask;
         self.put_piece(side, mask);
     }
 
-    fn put_knight(&mut self, side: Side, square: usize) {
-        let mask = 1u64 << square;
+    fn put_knight(&mut self, side: Side, mask: u64) {
         self.knights[side] |= mask;
         self.put_piece(side, mask);
     }
 
-    fn put_pawn(&mut self, side: Side, square: usize) {
-        let mask = 1u64 << square;
+    fn put_pawn(&mut self, side: Side, mask: u64) {
         self.pawns[side] |= mask;
         self.put_piece(side, mask);
     }
 
-    // fn remove_piece(mut self, side: Side, square: u8) {
-    //     self.any_piece &= !(1 << square);
-    // }
+    fn remove_piece(&mut self, mask: u64) {
+        self.any_piece &= !mask;
+        for side in WHITE..=BLACK {
+            self.occupied[side] &= !mask;
+            self.kings[side] &= !mask;
+            self.queens[side] &= !mask;
+            self.rooks[side] &= !mask;
+            self.bishops[side] &= !mask;
+            self.knights[side] &= !mask;
+            self.pawns[side] &= !mask;
+        }
+    }
+
+    fn has_piece(&self, mask: u64) -> bool {
+        self.any_piece & mask != 0
+    }
+
+    fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
+        if !self.has_piece(mask) {
+            return None;
+        }
+
+        if (self.kings[side] & mask) != 0 {
+            return Some(Piece::King);
+        }
+
+        if (self.queens[side] & mask) != 0 {
+            return Some(Piece::Queen);
+        }
+
+        if (self.rooks[side] & mask) != 0 {
+            return Some(Piece::Rook);
+        }
+
+        if (self.bishops[side] & mask) != 0 {
+            return Some(Piece::Bishop);
+        }
+
+        if (self.knights[side] & mask) != 0 {
+            return Some(Piece::Knight);
+        }
+
+        if (self.pawns[side] & mask) != 0 {
+            return Some(Piece::Pawn);
+        }
+
+        panic!("Internal error: there should be something on {:066b}", mask);
+    }
+
+    fn check_side(&self, mask: u64) -> Side {
+        if (self.occupied[WHITE] & mask) != 0 {
+            return WHITE;
+        }
+        if (self.occupied[BLACK] & mask) != 0 {
+            return BLACK;
+        }
+        panic!("Internal error: there should be something on {:066b}", mask);
+    }
+
+    pub fn make_move_str(&mut self, from: &str, to: &str) {
+        self.make_move(str_to_idx(from), str_to_idx(to));
+    }
+
+    pub fn make_move(&mut self, from: usize, to: usize) {
+        let from_mask = 1u64 << from;
+        let to_mask = 1u64 << to;
+
+        if self.has_piece(to_mask) {
+            self.remove_piece(to_mask);
+        }
+
+        let side = self.check_side(from_mask);
+
+        match self.check_piece(side, from_mask) {
+            None => panic!("Internal error: invalid move"),
+            Some(Piece::King) => self.put_king(side, to_mask),
+            Some(Piece::Queen) => self.put_queen(side, to_mask),
+            Some(Piece::Rook) => self.put_rook(side, to_mask),
+            Some(Piece::Bishop) => self.put_bishop(side, to_mask),
+            Some(Piece::Knight) => self.put_knight(side, to_mask),
+            Some(Piece::Pawn) => self.put_pawn(side, to_mask),
+        }
+
+        self.remove_piece(from_mask);
+    }
 }
