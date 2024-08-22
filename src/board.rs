@@ -10,8 +10,9 @@ const MASK_ROOK_CASTLED_QUEENSIDE: [u64; 2] = [1u64 << 3, 1u64 << (7 * 8 + 3)];
 const MASK_ROOK_CASTLED_KINGSIDE: [u64; 2] = [1u64 << 5, 1u64 << (7 * 8 + 5)];
 const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
 const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
+const MASK_LAST_RANK: [u64; 2] = [0b11111111u64 << (7 * 8), 0b11111111u64];
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Piece {
     King,
     Queen,
@@ -25,12 +26,101 @@ pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 
+pub struct Move {
+    m: u16
+}
+
+#[repr(u16)]
+#[derive(Debug)]
+pub enum Promotion {
+    Queen = 0,
+    Rook = 1,
+    Bishop = 2,
+    Knight = 3,
+}
+
+impl From<u16> for Promotion {
+    fn from(value: u16) -> Self {
+        match value {
+            0 => Promotion::Queen,
+            1 => Promotion::Rook,
+            2 => Promotion::Bishop,
+            3 => Promotion::Knight,
+            _ => panic!("Invalid promotion"),
+        }
+    }
+}
+
+impl From<Promotion> for Piece {
+    fn from(value: Promotion) -> Self {
+        match value {
+            Promotion::Queen => Piece::Queen,
+            Promotion::Rook => Piece::Rook,
+            Promotion::Bishop => Piece::Bishop,
+            Promotion::Knight => Piece::Knight,
+        }
+    }
+}
+
+impl Move {
+    const MASK_FROM: u16 = 0b111111;
+    const MASK_TO: u16 = 0b111111000000;
+    const MASK_PROMOTION: u16 = 0b11000000000000;
+
+    pub fn new() -> Self {
+        Self { m: 0 }
+    }
+
+    pub fn from_str(from: &str, to: &str) -> Self {
+        Self::from_idx(str_to_idx(from), str_to_idx(to))
+    }
+
+    pub fn from_str_prom(from: &str, to: &str, promotion: Promotion) -> Self {
+        let mut m = Self::from_str(from, to);
+        m.set_promotion(promotion);
+        m
+    }
+
+    pub fn from_idx(from: usize, to: usize) -> Self {
+        let mut m = Self::new();
+        m.set_from(from);
+        m.set_to(to);
+        m
+    }
+
+    pub fn set_from(&mut self, from: usize) {
+        self.m |= (from as u16) & Self::MASK_FROM;
+    }
+
+    pub fn set_to(&mut self, to: usize) {
+        self.m |= ((to as u16) << 6) & Self::MASK_TO;
+    }
+
+    pub fn set_promotion(&mut self, promotion: Promotion) {
+        self.m |= ((promotion as u16) << 12) & Self::MASK_PROMOTION;
+    }
+
+    pub fn get_from(&self) -> u16 {
+        self.m & Self::MASK_FROM
+    }
+
+    pub fn get_to(&self) -> u16 {
+        (self.m & Self::MASK_TO) >> 6
+    }
+
+    pub fn get_promotion(&self) -> Promotion {
+        Promotion::from((self.m & Self::MASK_PROMOTION) >> 12)
+    }
+}
+
 struct History {
     from: u64,
     to: u64,
     castle_kingside: ColorBool,
     castle_queenside: ColorBool,
     capture: Option<Piece>,
+    half_moves: u32,
+    promotion: bool,
 }
 
 impl History {
@@ -39,6 +129,7 @@ impl History {
         to: u64,
         castle_kingside: ColorBool,
         castle_queenside: ColorBool,
+        half_moves: u32,
     ) -> Self {
         Self {
             from,
@@ -46,6 +137,8 @@ impl History {
             castle_kingside,
             castle_queenside,
             capture: None,
+            half_moves,
+            promotion: false,
         }
     }
 }
@@ -493,12 +586,12 @@ impl Board {
     }
 
     pub fn make_move_str(&mut self, from: &str, to: &str) {
-        self.make_move(str_to_idx(from), str_to_idx(to));
+        self.make_move(Move::from_str(from, to));
     }
 
-    pub fn make_move(&mut self, from: usize, to: usize) {
-        let from_mask = 1u64 << from;
-        let to_mask = 1u64 << to;
+    pub fn make_move(&mut self, m: Move) {
+        let from_mask = 1u64 << m.get_from();
+        let to_mask = 1u64 << m.get_to();
 
         let side = self.check_side(from_mask);
         let opponent = if side == WHITE { BLACK } else { WHITE };
@@ -508,6 +601,7 @@ impl Board {
             to_mask,
             self.castle_kingside,
             self.castle_queenside,
+            self.half_moves_clock
         );
 
         if self.has_piece(to_mask) {
@@ -515,7 +609,7 @@ impl Board {
             self.remove_piece(to_mask);
         }
 
-        let piece_type = self.check_piece(side, from_mask).unwrap();
+        let mut piece_type = self.check_piece(side, from_mask).unwrap();
 
         if piece_type == Piece::Rook {
             if self.castle_queenside[side] && from_mask == MASK_ROOK_QUEENSIDE[side] {
@@ -548,6 +642,11 @@ impl Board {
             self.half_moves_clock = 0;
         } else {
             self.half_moves_clock += 1;
+        }
+
+        if piece_type == Piece::Pawn && (to_mask & MASK_LAST_RANK[side]) != 0 {
+            piece_type = Piece::from(m.get_promotion());
+            history_entry.promotion = true;
         }
 
         self.put_piece(side, to_mask, piece_type);
@@ -587,16 +686,21 @@ impl Board {
         self.castle_kingside = last_move.castle_kingside;
         self.castle_queenside = last_move.castle_queenside;
 
-        let piece_type = self.check_piece(side, last_move.to);
+        let mut piece_type = self.check_piece(side, last_move.to).unwrap();
+
+        if last_move.promotion {
+            piece_type = Piece::Pawn;
+        }
+
         self.remove_piece(last_move.to);
-        self.put_piece(side, last_move.from, piece_type.unwrap());
+        self.put_piece(side, last_move.from, piece_type);
 
         if last_move.capture.is_some() {
             self.put_piece(opponent, last_move.to, last_move.capture.unwrap());
         }
 
         self.current_color = side;
-        self.half_moves_clock -= 1;
+        self.half_moves_clock = last_move.half_moves;
         if self.current_color == BLACK {
             self.full_moves_count -= 1;
         }
@@ -629,6 +733,20 @@ mod tests {
         let mut board = Board::from_fen("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
         board.make_move_str("e4", "f5");
         board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
+        board.make_move_str("c6", "b4");
+        board.assert_position("r2qkbnr/ppp1pppp/8/3p1P2/1n6/2N5/P1PP1PPP/R1BQKBNR w KQkq - 0 5");
+        board.make_move_str("c3", "d5");
+        board.assert_position("r2qkbnr/ppp1pppp/8/3N1P2/1n6/8/P1PP1PPP/R1BQKBNR b KQkq - 0 5");
+        board.make_move_str("d8", "d5");
+        board.assert_position("r3kbnr/ppp1pppp/8/3q1P2/1n6/8/P1PP1PPP/R1BQKBNR w KQkq - 0 6");
+        board.unmake_move();
+        board.assert_position("r2qkbnr/ppp1pppp/8/3N1P2/1n6/8/P1PP1PPP/R1BQKBNR b KQkq - 0 5");
+        board.unmake_move();
+        board.assert_position("r2qkbnr/ppp1pppp/8/3p1P2/1n6/2N5/P1PP1PPP/R1BQKBNR w KQkq - 0 5");
+        board.unmake_move();
+        board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
+        board.unmake_move();
+        board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
     }
 
     #[test]
@@ -650,5 +768,18 @@ mod tests {
         board.assert_position("r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
         board.unmake_move();
         board.assert_position("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+    }
+
+    #[test]
+    fn test_promotion() {
+        let mut board = Board::from_fen("rnbqkbnr/p1pppppP/8/8/8/8/PPpPPP1P/RNBQKBNR w KQkq - 0 5");
+        board.make_move(Move::from_str_prom("h7", "g8", Promotion::Queen));
+        board.assert_position("rnbqkbQr/p1ppppp1/8/8/8/8/PPpPPP1P/RNBQKBNR b KQkq - 0 5");
+        board.make_move(Move::from_str_prom("c2", "d1", Promotion::Knight));
+        board.assert_position("rnbqkbQr/p1ppppp1/8/8/8/8/PP1PPP1P/RNBnKBNR w KQkq - 0 6");
+        board.unmake_move();
+        board.assert_position("rnbqkbQr/p1ppppp1/8/8/8/8/PPpPPP1P/RNBQKBNR b KQkq - 0 5");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/p1pppppP/8/8/8/8/PPpPPP1P/RNBQKBNR w KQkq - 0 5");
     }
 }
