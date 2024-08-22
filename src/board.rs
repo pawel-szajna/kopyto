@@ -555,24 +555,35 @@ impl Board {
 mod tests {
     use super::*;
 
+    impl Board {
+        fn assert_position(&self, fen: &str) {
+            assert_eq!(self.export_fen(), fen);
+        }
+    }
+
+    #[test]
+    fn test_starting_position() {
+        Board::from_starting_position().assert_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
     #[test]
     fn test_castle_moves() {
         let mut board = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
         board.make_move_str("e1", "g1");
-        assert_eq!(board.export_fen(), "r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
+        board.assert_position("r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
         board.make_move_str("h8", "h2");
-        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/7r/R4RK1 w q - 2 2");
+        board.assert_position("r3k3/8/8/8/8/8/7r/R4RK1 w q - 2 2");
         board.make_move_str("f1", "f2");
-        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/5R1r/R5K1 b q - 3 2");
+        board.assert_position("r3k3/8/8/8/8/8/5R1r/R5K1 b q - 3 2");
         board.make_move_str("e8", "c8");
-        assert_eq!(board.export_fen(), "2kr4/8/8/8/8/8/5R1r/R5K1 w - - 4 3");
+        board.assert_position("2kr4/8/8/8/8/8/5R1r/R5K1 w - - 4 3");
         board.unmake_move();
-        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/5R1r/R5K1 b q - 3 2");
+        board.assert_position("r3k3/8/8/8/8/8/5R1r/R5K1 b q - 3 2");
         board.unmake_move();
-        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/7r/R4RK1 w q - 2 2");
+        board.assert_position("r3k3/8/8/8/8/8/7r/R4RK1 w q - 2 2");
         board.unmake_move();
-        assert_eq!(board.export_fen(), "r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
+        board.assert_position("r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
         board.unmake_move();
-        assert_eq!(board.export_fen(), "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+        board.assert_position("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
     }
 }
