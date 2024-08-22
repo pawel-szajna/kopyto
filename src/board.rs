@@ -453,8 +453,8 @@ impl Board {
         );
 
         if self.has_piece(to_mask) {
-            self.remove_piece(to_mask);
             history_entry.capture = self.check_piece(opponent, to_mask);
+            self.remove_piece(to_mask);
         }
 
         let piece_type = self.check_piece(side, from_mask).unwrap();
