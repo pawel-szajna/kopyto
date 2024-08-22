@@ -6,8 +6,10 @@ const BLACK: Side = 1;
 
 const MASK_ROOK_QUEENSIDE: [u64; 2] = [1u64, 1u64 << (7 * 8)];
 const MASK_ROOK_KINGSIDE: [u64; 2] = [1u64 << 7, 1u64 << (7 * 8 + 7)];
-// const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
-// const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
+const MASK_ROOK_CASTLED_QUEENSIDE: [u64; 2] = [1u64 << 3, 1u64 << (7 * 8 + 3)];
+const MASK_ROOK_CASTLED_KINGSIDE: [u64; 2] = [1u64 << 5, 1u64 << (7 * 8 + 5)];
+const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
+const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
 
 #[derive(PartialEq, Eq)]
 pub enum Piece {
@@ -65,6 +67,9 @@ pub struct Board {
     current_color: Side,
 
     history: Vec<History>,
+
+    half_moves_clock: u32,
+    full_moves_count: u32,
 }
 
 fn coords_to_mask(file: usize, rank: usize) -> u64 {
@@ -105,8 +110,8 @@ fn str_to_idx(pos: &str) -> usize {
 }
 
 impl Board {
-    pub fn new() -> Board {
-        Board {
+    pub fn new() -> Self {
+        Self {
             kings: [0, 0],
             queens: [0, 0],
             rooks: [0, 0],
@@ -123,6 +128,9 @@ impl Board {
             current_color: WHITE,
 
             history: Vec::new(),
+
+            half_moves_clock: 0,
+            full_moves_count: 1,
         }
     }
 
@@ -280,27 +288,32 @@ impl Board {
         });
 
         result.push(' ');
-        if self.castle_kingside[WHITE] {
-            result.push('K');
-        }
-        if self.castle_queenside[WHITE] {
-            result.push('Q');
-        }
-        if self.castle_kingside[BLACK] {
-            result.push('k');
-        }
-        if self.castle_queenside[BLACK] {
-            result.push('q');
+        if !(self.castle_kingside[WHITE]
+            || self.castle_queenside[WHITE]
+            || self.castle_kingside[BLACK]
+            || self.castle_queenside[BLACK])
+        {
+            result.push('-');
+        } else {
+            if self.castle_kingside[WHITE] {
+                result.push('K');
+            }
+            if self.castle_queenside[WHITE] {
+                result.push('Q');
+            }
+            if self.castle_kingside[BLACK] {
+                result.push('k');
+            }
+            if self.castle_queenside[BLACK] {
+                result.push('q');
+            }
         }
 
         result.push(' ');
         result.push('-'); // en passant
 
-        result.push(' ');
-        result.push('0'); // half-moves since last capture or pawn advance
-
-        result.push(' ');
-        result.push('1'); // full-moves since game starts
+        result.push_str(format!(" {}", self.half_moves_clock).as_str());
+        result.push_str(format!(" {}", self.full_moves_count).as_str());
 
         result
     }
@@ -468,6 +481,20 @@ impl Board {
         }
 
         if piece_type == Piece::King {
+            // TODO: check if not attacked when castling
+            if self.castle_kingside[side]
+                && to_mask == MASK_CASTLE_KINGSIDE[side]
+                && self.check_piece(side, MASK_ROOK_KINGSIDE[side]) == Some(Piece::Rook)
+            {
+                self.remove_piece(MASK_ROOK_KINGSIDE[side]);
+                self.put_piece(side, MASK_ROOK_CASTLED_KINGSIDE[side], Piece::Rook);
+            } else if self.castle_queenside[side]
+                && to_mask == MASK_CASTLE_QUEENSIDE[side]
+                && self.check_piece(side, MASK_ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+            {
+                self.remove_piece(MASK_ROOK_QUEENSIDE[side]);
+                self.put_piece(side, MASK_ROOK_CASTLED_QUEENSIDE[side], Piece::Rook);
+            }
             self.castle_queenside[side] = false;
             self.castle_kingside[side] = false;
         }
@@ -475,6 +502,12 @@ impl Board {
         self.put_piece(side, to_mask, piece_type);
         self.remove_piece(from_mask);
         self.history.push(history_entry);
+
+        self.current_color = opponent;
+        self.half_moves_clock += 1;
+        if self.current_color == WHITE {
+            self.full_moves_count += 1;
+        }
     }
 
     pub fn unmake_move(&mut self) {
@@ -486,6 +519,19 @@ impl Board {
         let side = self.check_side(last_move.to);
         let opponent = if side == WHITE { BLACK } else { WHITE };
 
+        if self.castle_kingside[side] != last_move.castle_kingside[side]
+            && last_move.to == MASK_CASTLE_KINGSIDE[side]
+        {
+            self.remove_piece(MASK_ROOK_CASTLED_KINGSIDE[side]);
+            self.put_piece(side, MASK_ROOK_KINGSIDE[side], Piece::Rook);
+        }
+        if self.castle_queenside[side] != last_move.castle_queenside[side]
+            && last_move.to == MASK_CASTLE_QUEENSIDE[side]
+        {
+            self.remove_piece(MASK_ROOK_CASTLED_QUEENSIDE[side]);
+            self.put_piece(side, MASK_ROOK_QUEENSIDE[side], Piece::Rook);
+        }
+
         self.castle_kingside = last_move.castle_kingside;
         self.castle_queenside = last_move.castle_queenside;
 
@@ -496,5 +542,37 @@ impl Board {
         if last_move.capture.is_some() {
             self.put_piece(opponent, last_move.to, last_move.capture.unwrap());
         }
+
+        self.current_color = side;
+        self.half_moves_clock -= 1;
+        if self.current_color == BLACK {
+            self.full_moves_count -= 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_castle_moves() {
+        let mut board = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+        board.make_move_str("e1", "g1");
+        assert_eq!(board.export_fen(), "r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
+        board.make_move_str("h8", "h2");
+        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/7r/R4RK1 w q - 2 2");
+        board.make_move_str("f1", "f2");
+        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/5R1r/R5K1 b q - 3 2");
+        board.make_move_str("e8", "c8");
+        assert_eq!(board.export_fen(), "2kr4/8/8/8/8/8/5R1r/R5K1 w - - 4 3");
+        board.unmake_move();
+        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/5R1r/R5K1 b q - 3 2");
+        board.unmake_move();
+        assert_eq!(board.export_fen(), "r3k3/8/8/8/8/8/7r/R4RK1 w q - 2 2");
+        board.unmake_move();
+        assert_eq!(board.export_fen(), "r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
+        board.unmake_move();
+        assert_eq!(board.export_fen(), "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
     }
 }
