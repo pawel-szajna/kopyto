@@ -170,6 +170,51 @@ impl Board {
             }
         }
 
+        match fen.next() {
+            Some('w') => board.current_color = WHITE,
+            Some('b') => board.current_color = BLACK,
+            _ => panic!("Invalid fen, expected color to play"),
+        }
+
+        assert_eq!(fen.next(), Some(' '), "Invalid fen, expected space");
+
+        board.castle_kingside = [false, false];
+        board.castle_queenside = [false, false];
+
+        loop {
+            match fen.next() {
+                Some('-') => { fen.next(); break },
+                Some(' ') => break,
+                Some('K') => board.castle_kingside[WHITE] = true,
+                Some('k') => board.castle_kingside[BLACK] = true,
+                Some('Q') => board.castle_queenside[WHITE] = true,
+                Some('q') => board.castle_queenside[BLACK] = true,
+                _ => panic!("Invalid fen, expected castling rights"),
+            }
+        }
+
+        assert_eq!(fen.next(), Some('-'), "En passant in fen is not implemented yet");
+        assert_eq!(fen.next(), Some(' '));
+
+        board.half_moves_clock = 0;
+
+        loop {
+            match fen.next() {
+                Some(' ') => break,
+                Some(x) if x.is_digit(10) => board.half_moves_clock = board.half_moves_clock * 10 + x.to_digit(10).unwrap(),
+                _ => panic!("Invalid fen, expected half move count"),
+            }
+        }
+
+        board.full_moves_count = 0;
+
+        loop {
+            match fen.next() {
+                Some(x) if x.is_digit(10) => board.full_moves_count = board.full_moves_count * 10 + x.to_digit(10).unwrap(),
+                _ => break,
+            }
+        }
+
         board
     }
 
@@ -337,7 +382,7 @@ impl Board {
             result.push('\n');
         }
 
-        result.push_str("  A B C D E F G H");
+        result.push_str("  A B C D E F G H ");
 
         result
     }
@@ -499,15 +544,22 @@ impl Board {
             self.castle_kingside[side] = false;
         }
 
+        if piece_type == Piece::Pawn || history_entry.capture.is_some() {
+            self.half_moves_clock = 0;
+        } else {
+            self.half_moves_clock += 1;
+        }
+
         self.put_piece(side, to_mask, piece_type);
         self.remove_piece(from_mask);
-        self.history.push(history_entry);
 
         self.current_color = opponent;
-        self.half_moves_clock += 1;
+
         if self.current_color == WHITE {
             self.full_moves_count += 1;
         }
+
+        self.history.push(history_entry);
     }
 
     pub fn unmake_move(&mut self) {
@@ -557,13 +609,26 @@ mod tests {
 
     impl Board {
         fn assert_position(&self, fen: &str) {
-            assert_eq!(self.export_fen(), fen);
+            let actual = self.export_fen();
+            if actual != fen {
+                let actual_board = self.export_graph();
+                let expected_board = Board::from_fen(fen).export_graph();
+                actual_board.split('\n').zip(expected_board.split('\n')).for_each(|x| { println!("{:>20}  {:>20}", x.0, x.1) });
+            }
+            assert_eq!(actual, fen);
         }
     }
 
     #[test]
     fn test_starting_position() {
         Board::from_starting_position().assert_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
+    #[test]
+    fn test_capture_moves() {
+        let mut board = Board::from_fen("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
+        board.make_move_str("e4", "f5");
+        board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
     }
 
     #[test]
