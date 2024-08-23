@@ -1,4 +1,3 @@
-use raylib::ffi::Texture;
 use crate::board::Board;
 use raylib::prelude::*;
 use crate::board;
