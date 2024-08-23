@@ -233,7 +233,11 @@ pub struct Board {
 }
 
 pub fn coords_to_mask(file: usize, rank: usize) -> u64 {
-    1u64 << (rank * 8usize + file)
+    1u64 << coords_to_idx(file, rank)
+}
+
+pub fn coords_to_idx(file: usize, rank: usize) -> usize {
+    rank * 8 + file
 }
 
 fn idx_to_str(idx: usize) -> String {
@@ -289,7 +293,7 @@ fn str_to_idx(pos: &str) -> usize {
     let mut pos = pos.chars();
     let file = get_file(&mut pos);
     let rank = get_rank(&mut pos);
-    rank * 8 + file
+    coords_to_idx(file, rank)
 }
 
 impl Board {

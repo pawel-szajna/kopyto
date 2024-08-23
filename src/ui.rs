@@ -1,6 +1,7 @@
-use crate::board::Board;
+use crate::board::{coords_to_idx, Board, Move};
 use raylib::prelude::*;
 use crate::board;
+use crate::movegen::MoveGenerator;
 
 type TexturePerColor = [Option<Texture2D>; 2];
 const NO_TEXTURE: TexturePerColor = [None, None];
@@ -14,10 +15,13 @@ pub struct UI {
     t_rook: TexturePerColor,
     t_bishop: TexturePerColor,
     t_knight: TexturePerColor,
+
+    legal_moves: Vec<Move>,
 }
 
-const SQUARE: [Color; 2] = [Color::new(188, 143, 143, 255), Color::new(245, 245, 220, 255)];
+const SQUARE: [Color; 2] = [Color::new(188, 143, 143, 255), Color::new(245, 233, 220, 255)];
 const SQUARE_LAST_MOVE: [Color; 2] = [Color::new(183, 188, 143, 255), Color::new(217, 222, 177, 255)];
+const SQUARE_LEGAL: [Color; 2] = [Color::new(158, 143, 188, 255), Color::new(207, 188, 214, 255)];
 const PROMOTION_BACKGROUND: Color = Color::new(255, 255, 255, 192);
 
 #[derive(Copy, Clone)]
@@ -41,6 +45,8 @@ impl UI {
             t_rook: NO_TEXTURE,
             t_bishop: NO_TEXTURE,
             t_knight: NO_TEXTURE,
+
+            legal_moves: Vec::new(),
         }
     }
 
@@ -102,6 +108,7 @@ impl UI {
                 for piece in &pieces {
                     if mouse_x > piece.x && mouse_x < piece.x + 60 && mouse_y > piece.y && mouse_y < piece.y + 60 {
                         current_piece = Some(piece.clone());
+                        self.legal_moves = self.board.generate_moves_for(piece.file, piece.rank);
                         break;
                     }
                 }
@@ -123,6 +130,7 @@ impl UI {
                 }
                 current_piece = None;
                 promotion_window = None;
+                self.legal_moves.clear();
             }
 
             if current_piece.is_some() && promotion_window.is_none() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
@@ -136,12 +144,15 @@ impl UI {
                         } else {
                             self.board.make_move(board::Move::from_idx(piece.rank * 8usize + piece.file, target_rank * 8usize + target_file));
                             current_piece = None;
+                            self.legal_moves.clear();
                         }
                     } else {
                         current_piece = None;
+                        self.legal_moves.clear();
                     }
                 } else {
                     current_piece = None;
+                    self.legal_moves.clear();
                 }
             }
         }
@@ -174,6 +185,9 @@ impl UI {
                     if last_move.0 == current_square || last_move.1 == current_square {
                         color = SQUARE_LAST_MOVE[square_shade];
                     }
+                }
+                if self.legal_moves.iter().any(|m| m.get_to() == coords_to_idx(file as usize, rank as usize) as u16) {
+                    color = SQUARE_LEGAL[square_shade];
                 }
                 let x = 160 + file * 60;
                 let y = 60 + (7 - rank) * 60;
