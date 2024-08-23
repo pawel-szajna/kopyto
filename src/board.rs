@@ -4,13 +4,17 @@ pub type Side = usize;
 const WHITE: Side = 0;
 const BLACK: Side = 1;
 
+const MASK_SINGLE_RANK: u64 = 0b11111111;
+
 const MASK_ROOK_QUEENSIDE: [u64; 2] = [1u64, 1u64 << (7 * 8)];
 const MASK_ROOK_KINGSIDE: [u64; 2] = [1u64 << 7, 1u64 << (7 * 8 + 7)];
 const MASK_ROOK_CASTLED_QUEENSIDE: [u64; 2] = [1u64 << 3, 1u64 << (7 * 8 + 3)];
 const MASK_ROOK_CASTLED_KINGSIDE: [u64; 2] = [1u64 << 5, 1u64 << (7 * 8 + 5)];
 const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
 const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
-const MASK_LAST_RANK: [u64; 2] = [0b11111111u64 << (7 * 8), 0b11111111u64];
+const MASK_LAST_RANK: [u64; 2] = [MASK_SINGLE_RANK << (7 * 8), MASK_SINGLE_RANK];
+const MASK_SECOND_RANK: [u64; 2] = [MASK_SINGLE_RANK << 8, MASK_SINGLE_RANK << (6 * 8)];
+const MASK_EN_PASSANT_RANK: [u64; 2] = [MASK_SINGLE_RANK << (3 * 8), MASK_SINGLE_RANK << (4 * 8)];
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Piece {
@@ -27,7 +31,7 @@ pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 
 pub struct Move {
-    m: u16
+    m: u16,
 }
 
 #[repr(u16)]
@@ -121,6 +125,7 @@ struct History {
     capture: Option<Piece>,
     half_moves: u32,
     promotion: bool,
+    en_passant: Option<u64>,
 }
 
 impl History {
@@ -130,6 +135,7 @@ impl History {
         castle_kingside: ColorBool,
         castle_queenside: ColorBool,
         half_moves: u32,
+        en_passant: Option<u64>,
     ) -> Self {
         Self {
             from,
@@ -139,6 +145,7 @@ impl History {
             capture: None,
             half_moves,
             promotion: false,
+            en_passant,
         }
     }
 }
@@ -163,6 +170,8 @@ pub struct Board {
 
     half_moves_clock: u32,
     full_moves_count: u32,
+
+    en_passant: Option<u64>,
 }
 
 fn coords_to_mask(file: usize, rank: usize) -> u64 {
@@ -224,6 +233,8 @@ impl Board {
 
             half_moves_clock: 0,
             full_moves_count: 1,
+
+            en_passant: None,
         }
     }
 
@@ -276,7 +287,10 @@ impl Board {
 
         loop {
             match fen.next() {
-                Some('-') => { fen.next(); break },
+                Some('-') => {
+                    fen.next();
+                    break;
+                }
                 Some(' ') => break,
                 Some('K') => board.castle_kingside[WHITE] = true,
                 Some('k') => board.castle_kingside[BLACK] = true,
@@ -286,8 +300,20 @@ impl Board {
             }
         }
 
-        assert_eq!(fen.next(), Some('-'), "En passant in fen is not implemented yet");
-        assert_eq!(fen.next(), Some(' '));
+        loop {
+            match fen.next() {
+                Some('-') => {
+                    fen.next();
+                    break;
+                }
+                Some(' ') => break,
+                Some(file) if file.is_alphabetic() => {
+                    let rank = fen.next().unwrap();
+                    board.en_passant = Some(1u64 << str_to_idx(format!("{}{}", file, rank).as_str()));
+                }
+                _ => panic!("Invalid fen, expected en passant data"),
+            }
+        }
 
         board.half_moves_clock = 0;
 
@@ -448,7 +474,26 @@ impl Board {
         }
 
         result.push(' ');
-        result.push('-'); // en passant
+        match self.en_passant {
+            None => result.push('-'),
+            Some(x) => {
+                let idx = x.trailing_zeros();
+                let file = idx % 8;
+                let rank = (idx / 8) as u8;
+                result.push(match file {
+                    0 => 'a',
+                    1 => 'b',
+                    2 => 'c',
+                    3 => 'd',
+                    4 => 'e',
+                    5 => 'f',
+                    6 => 'g',
+                    7 => 'h',
+                    _ => panic!("invalid file"),
+                });
+                result.push(('0' as u8 + rank + 1) as char);
+            }
+        }
 
         result.push_str(format!(" {}", self.half_moves_clock).as_str());
         result.push_str(format!(" {}", self.full_moves_count).as_str());
@@ -601,7 +646,8 @@ impl Board {
             to_mask,
             self.castle_kingside,
             self.castle_queenside,
-            self.half_moves_clock
+            self.half_moves_clock,
+            self.en_passant,
         );
 
         if self.has_piece(to_mask) {
@@ -649,6 +695,23 @@ impl Board {
             history_entry.promotion = true;
         }
 
+        if piece_type == Piece::Pawn && Some(to_mask) == self.en_passant {
+            if side == WHITE {
+                self.remove_piece(to_mask >> 8);
+            } else {
+                self.remove_piece(to_mask << 8);
+            }
+        }
+
+        self.en_passant = None;
+
+        if piece_type == Piece::Pawn
+            && from_mask & MASK_SECOND_RANK[side] != 0
+            && to_mask & MASK_EN_PASSANT_RANK[side] != 0
+            && (to_mask << 1 | to_mask >> 1) & MASK_EN_PASSANT_RANK[side] & self.pawns[opponent] != 0 {
+            self.en_passant = Some(if side == WHITE { from_mask << 8 } else { from_mask >> 8 });
+        }
+
         self.put_piece(side, to_mask, piece_type);
         self.remove_piece(from_mask);
 
@@ -692,6 +755,11 @@ impl Board {
             piece_type = Piece::Pawn;
         }
 
+        if piece_type == Piece::Pawn && last_move.en_passant == Some(last_move.to) {
+            let capture_square = last_move.en_passant.unwrap();
+            self.put_piece(opponent, if side == WHITE { capture_square >> 8 } else { capture_square << 8 }, Piece::Pawn);
+        }
+
         self.remove_piece(last_move.to);
         self.put_piece(side, last_move.from, piece_type);
 
@@ -701,6 +769,7 @@ impl Board {
 
         self.current_color = side;
         self.half_moves_clock = last_move.half_moves;
+        self.en_passant = last_move.en_passant;
         if self.current_color == BLACK {
             self.full_moves_count -= 1;
         }
@@ -781,5 +850,34 @@ mod tests {
         board.assert_position("rnbqkbQr/p1ppppp1/8/8/8/8/PPpPPP1P/RNBQKBNR b KQkq - 0 5");
         board.unmake_move();
         board.assert_position("rnbqkbnr/p1pppppP/8/8/8/8/PPpPPP1P/RNBQKBNR w KQkq - 0 5");
+    }
+
+    #[test]
+    fn test_en_passant() {
+        let mut board = Board::from_fen("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
+        board.make_move_str("d5", "e6");
+        board.assert_position("rnbqkbnr/pppp1pp1/4P2p/8/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 3");
+        board.make_move_str("d7", "d5");
+        board.assert_position("rnbqkbnr/ppp2pp1/4P2p/3p4/8/8/PPP1PPPP/RNBQKBNR w KQkq - 0 4");
+        board.make_move_str("e6", "e7");
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/3p4/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 4");
+        board.make_move_str("d5", "d4");
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/8/3p4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 5");
+        board.make_move_str("e2", "e4");
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/8/3pP3/8/PPP2PPP/RNBQKBNR b KQkq e3 0 5");
+        board.make_move_str("d4", "e3");
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/8/8/4p3/PPP2PPP/RNBQKBNR w KQkq - 0 6");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/8/3pP3/8/PPP2PPP/RNBQKBNR b KQkq e3 0 5");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/8/3p4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 5");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/ppp1Ppp1/7p/3p4/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 4");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/ppp2pp1/4P2p/3p4/8/8/PPP1PPPP/RNBQKBNR w KQkq - 0 4");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/pppp1pp1/4P2p/8/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 3");
+        board.unmake_move();
+        board.assert_position("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
     }
 }
