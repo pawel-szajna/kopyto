@@ -215,6 +215,21 @@ mod tests {
                     a_move!("d7", "d8", Promotion::Queen),
                 ],
             );
+            piece_move_generation_test(
+                "rnbqkbnr/pPpppppp/8/8/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1",
+                1,
+                6,
+                vec![
+                    a_move!("b7", "a8", Promotion::Queen),
+                    a_move!("b7", "a8", Promotion::Rook),
+                    a_move!("b7", "a8", Promotion::Bishop),
+                    a_move!("b7", "a8", Promotion::Knight),
+                    a_move!("b7", "c8", Promotion::Queen),
+                    a_move!("b7", "c8", Promotion::Rook),
+                    a_move!("b7", "c8", Promotion::Bishop),
+                    a_move!("b7", "c8", Promotion::Knight),
+                ],
+            )
         }
     }
 }
