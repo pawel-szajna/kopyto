@@ -1,3 +1,4 @@
+use std::fmt;
 use std::str::Chars;
 
 pub type Side = usize;
@@ -5,6 +6,40 @@ pub const WHITE: Side = 0;
 pub const BLACK: Side = 1;
 
 const MASK_SINGLE_RANK: u64 = 0b11111111;
+const MASK_SINGLE_FILE: u64 = 0x0101010101010101;
+
+pub const MASK_RANKS: [u64; 8] = [
+    MASK_SINGLE_RANK << (8 * 0),
+    MASK_SINGLE_RANK << (8 * 1),
+    MASK_SINGLE_RANK << (8 * 2),
+    MASK_SINGLE_RANK << (8 * 3),
+    MASK_SINGLE_RANK << (8 * 4),
+    MASK_SINGLE_RANK << (8 * 5),
+    MASK_SINGLE_RANK << (8 * 6),
+    MASK_SINGLE_RANK << (8 * 7),
+];
+
+pub const MASK_RANKS_RELATIVE: [[u64; 2]; 8] = [
+    [MASK_RANKS[0], MASK_RANKS[7]],
+    [MASK_RANKS[1], MASK_RANKS[6]],
+    [MASK_RANKS[2], MASK_RANKS[5]],
+    [MASK_RANKS[3], MASK_RANKS[4]],
+    [MASK_RANKS[4], MASK_RANKS[3]],
+    [MASK_RANKS[5], MASK_RANKS[2]],
+    [MASK_RANKS[6], MASK_RANKS[1]],
+    [MASK_RANKS[7], MASK_RANKS[0]],
+];
+
+pub const MASK_FILES: [u64; 8] = [
+    MASK_SINGLE_FILE << 0,
+    MASK_SINGLE_FILE << 1,
+    MASK_SINGLE_FILE << 2,
+    MASK_SINGLE_FILE << 3,
+    MASK_SINGLE_FILE << 4,
+    MASK_SINGLE_FILE << 5,
+    MASK_SINGLE_FILE << 6,
+    MASK_SINGLE_FILE << 7,
+];
 
 const MASK_ROOK_QUEENSIDE: [u64; 2] = [1u64, 1u64 << (7 * 8)];
 const MASK_ROOK_KINGSIDE: [u64; 2] = [1u64 << 7, 1u64 << (7 * 8 + 7)];
@@ -12,9 +47,9 @@ const MASK_ROOK_CASTLED_QUEENSIDE: [u64; 2] = [1u64 << 3, 1u64 << (7 * 8 + 3)];
 const MASK_ROOK_CASTLED_KINGSIDE: [u64; 2] = [1u64 << 5, 1u64 << (7 * 8 + 5)];
 const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
 const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
-const MASK_LAST_RANK: [u64; 2] = [MASK_SINGLE_RANK << (7 * 8), MASK_SINGLE_RANK];
-const MASK_SECOND_RANK: [u64; 2] = [MASK_SINGLE_RANK << 8, MASK_SINGLE_RANK << (6 * 8)];
-const MASK_EN_PASSANT_RANK: [u64; 2] = [MASK_SINGLE_RANK << (3 * 8), MASK_SINGLE_RANK << (4 * 8)];
+pub const MASK_LAST_RANK: [u64; 2] = [MASK_RANKS[7], MASK_RANKS[0]];
+pub const MASK_SECOND_RANK: [u64; 2] = [MASK_RANKS[1], MASK_RANKS[6]];
+const MASK_EN_PASSANT_RANK: [u64; 2] = [MASK_RANKS[3], MASK_RANKS[4]];
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Piece {
@@ -30,8 +65,20 @@ pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Move {
     m: u16,
+}
+
+impl fmt::Debug for Move {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let from = idx_to_str(self.get_from() as usize);
+        let to = idx_to_str(self.get_to() as usize);
+        match self.m & 0b100000000000000 != 0 {
+            true => write!(f, "{}{}+{:?}", from, to, self.get_promotion()),
+            false => write!(f, "{}{}", from, to),
+        }
+    }
 }
 
 #[repr(u16)]
@@ -70,6 +117,7 @@ impl Move {
     const MASK_FROM: u16 = 0b111111;
     const MASK_TO: u16 = 0b111111000000;
     const MASK_PROMOTION: u16 = 0b11000000000000;
+    const MASK_HAS_PROMOTION: u16 = 0b100000000000000;
 
     pub fn new() -> Self {
         Self { m: 0 }
@@ -92,6 +140,10 @@ impl Move {
         m
     }
 
+    pub fn from_mask(from: u64, to: u64) -> Self {
+        Self::from_idx(from.trailing_zeros() as usize, to.trailing_zeros() as usize)
+    }
+
     pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
         let mut m = Self::from_idx(from, to);
         m.set_promotion(promotion);
@@ -107,7 +159,7 @@ impl Move {
     }
 
     pub fn set_promotion(&mut self, promotion: Promotion) {
-        self.m |= ((promotion as u16) << 12) & Self::MASK_PROMOTION;
+        self.m |= (((promotion as u16) << 12) & Self::MASK_PROMOTION) | Self::MASK_HAS_PROMOTION;
     }
 
     pub fn get_from(&self) -> u16 {
@@ -182,6 +234,29 @@ pub struct Board {
 
 pub fn coords_to_mask(file: usize, rank: usize) -> u64 {
     1u64 << (rank * 8usize + file)
+}
+
+fn idx_to_str(idx: usize) -> String {
+    let mut result = String::new();
+    let file = idx % 8;
+    let rank = (idx / 8) as u8;
+    result.push(match file {
+        0 => 'a',
+        1 => 'b',
+        2 => 'c',
+        3 => 'd',
+        4 => 'e',
+        5 => 'f',
+        6 => 'g',
+        7 => 'h',
+        _ => panic!("invalid file"),
+    });
+    result.push(('0' as u8 + rank + 1) as char);
+    result
+}
+
+fn mask_to_str(mask: u64) -> String {
+    idx_to_str(mask.trailing_zeros() as usize)
 }
 
 fn str_to_idx(pos: &str) -> usize {
@@ -402,6 +477,7 @@ impl Board {
         }
     }
 
+    #[allow(dead_code)]
     pub fn print_info(&self) {
         println!("occupied * {0:#066b}", self.any_piece);
         println!("occupied W {0:#066b}", self.occupied[WHITE]);
@@ -482,23 +558,7 @@ impl Board {
         result.push(' ');
         match self.en_passant {
             None => result.push('-'),
-            Some(x) => {
-                let idx = x.trailing_zeros();
-                let file = idx % 8;
-                let rank = (idx / 8) as u8;
-                result.push(match file {
-                    0 => 'a',
-                    1 => 'b',
-                    2 => 'c',
-                    3 => 'd',
-                    4 => 'e',
-                    5 => 'f',
-                    6 => 'g',
-                    7 => 'h',
-                    _ => panic!("invalid file"),
-                });
-                result.push(('0' as u8 + rank + 1) as char);
-            }
+            Some(x) => result.push_str(mask_to_str(x).as_str()),
         }
 
         result.push_str(format!(" {}", self.half_moves_clock).as_str());
@@ -590,8 +650,12 @@ impl Board {
         }
     }
 
-    fn has_piece(&self, mask: u64) -> bool {
+    pub fn has_piece(&self, mask: u64) -> bool {
         self.any_piece & mask != 0
+    }
+
+    pub fn has_side_piece(&self, side: Side, mask: u64) -> bool {
+        self.occupied[side] & mask != 0
     }
 
     pub fn check_square(&self, mask: u64) -> Option<(Side, Piece)> {
