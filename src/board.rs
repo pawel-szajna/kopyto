@@ -87,9 +87,14 @@ impl Move {
 
     pub fn from_idx(from: usize, to: usize) -> Self {
         let mut m = Self::new();
-        println!("Making move from {} to {}", from, to);
         m.set_from(from);
         m.set_to(to);
+        m
+    }
+
+    pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
+        let mut m = Self::from_idx(from, to);
+        m.set_promotion(promotion);
         m
     }
 

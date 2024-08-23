@@ -18,6 +18,7 @@ pub struct UI {
 
 const SQUARE: [Color; 2] = [Color::new(188, 143, 143, 255), Color::new(245, 245, 220, 255)];
 const SQUARE_LAST_MOVE: [Color; 2] = [Color::new(183, 188, 143, 255), Color::new(217, 222, 177, 255)];
+const PROMOTION_BACKGROUND: Color = Color::new(255, 255, 255, 192);
 
 #[derive(Copy, Clone)]
 struct PieceInfo {
@@ -67,6 +68,7 @@ impl UI {
         rl.set_target_fps(60);
         let mut pieces = Vec::<PieceInfo>::new();
         let mut current_piece: Option<PieceInfo> = None;
+        let mut promotion_window: Option<(usize, usize)> = None;
 
         self.load_textures(&mut rl, &thread);
 
@@ -80,13 +82,19 @@ impl UI {
 
                 d.clear_background(Color::BLACK);
                 d.draw_text("kopyto", 16, 16, 16, Color::WHITE);
+                d.draw_text(self.board.export_fen().as_str(), 16, d.get_screen_height() - 32, 16, Color::WHITE);
                 d.draw_fps(d.get_screen_width() - 108, 16);
 
                 self.draw_board(&mut d, &mut pieces, &current_piece);
 
-                if current_piece.is_some() {
+                if current_piece.is_some() && promotion_window.is_none() {
                     let current_piece = current_piece.unwrap();
-                    self.draw_piece_graphics(mouse_x - 30, mouse_y - 30, &mut d, current_piece.side, Color::WHITE, &current_piece.kind);
+                    self.draw_piece_graphics(mouse_x - 30, mouse_y - 30, &mut d, current_piece.side, Color::WHITE, current_piece.kind);
+                }
+
+                if promotion_window.is_some() {
+                    let (target_file, _) = promotion_window.unwrap();
+                    self.draw_promotion_window(&mut d, target_file);
                 }
             }
 
@@ -99,20 +107,59 @@ impl UI {
                 }
             }
 
-            if current_piece.is_some() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+            if promotion_window.is_some() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+                let piece = current_piece.unwrap();
+                let (target_file, target_rank) = promotion_window.unwrap();
+                let x = 160 + (target_file as i32) * 60;
+                let y = 60;
+                if mouse_x > x && mouse_x < x + 60 && mouse_y > y && mouse_y < y + 60 * 4 {
+                    let target_piece = match mouse_y - y {
+                        y if y < 60 * 1 => board::Promotion::Queen,
+                        y if y < 60 * 2 => board::Promotion::Rook,
+                        y if y < 60 * 3 => board::Promotion::Bishop,
+                        _ => board::Promotion::Knight,
+                    };
+                    self.board.make_move(board::Move::from_idx_prom(piece.rank * 8usize + piece.file, target_rank * 8usize + target_file, target_piece));
+                }
+                current_piece = None;
+                promotion_window = None;
+            }
+
+            if current_piece.is_some() && promotion_window.is_none() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
                 if mouse_x > 160 && mouse_x < 160 + (8 * 60) && mouse_y > 60 && mouse_y < 60 + (8 * 60) {
                     let target_file = (mouse_x as usize - 160) / 60;
                     let target_rank = 7 - (mouse_y as usize - 60) / 60;
-                    let current_piece = current_piece.unwrap();
-                    if target_file != current_piece.file || target_rank != current_piece.rank {
-                        self.board.make_move(board::Move::from_idx(current_piece.rank * 8usize + current_piece.file, target_rank * 8usize + target_file));
+                    let piece = current_piece.unwrap();
+                    if target_file != piece.file || target_rank != piece.rank {
+                        if piece.kind == board::Piece::Pawn && target_rank == if self.board.side_to_move() == board::WHITE { 7 } else { 0 } {
+                            promotion_window = Some((target_file, target_rank));
+                        } else {
+                            self.board.make_move(board::Move::from_idx(piece.rank * 8usize + piece.file, target_rank * 8usize + target_file));
+                            current_piece = None;
+                        }
+                    } else {
+                        current_piece = None;
                     }
+                } else {
+                    current_piece = None;
                 }
-                current_piece = None
             }
         }
 
         self.unload_textures();
+    }
+
+    fn draw_promotion_window(&self, d: &mut RaylibDrawHandle, file: usize) {
+        let x = 160 + (file as i32) * 60;
+        let y = 60;
+        let side = self.board.side_to_move();
+
+        d.draw_rectangle(x, y, 60, 60 * 4, PROMOTION_BACKGROUND);
+        d.draw_rectangle_lines(x, y, 60, 60 * 4, Color::BLACK);
+        self.draw_piece_graphics(x, y, d, side, Color::WHITE, board::Piece::Queen);
+        self.draw_piece_graphics(x, y + 60, d, side, Color::WHITE, board::Piece::Rook);
+        self.draw_piece_graphics(x, y + 60 * 2, d, side, Color::WHITE, board::Piece::Bishop);
+        self.draw_piece_graphics(x, y + 60 * 3, d, side, Color::WHITE, board::Piece::Knight);
     }
 
     fn draw_board(&self, d: &mut RaylibDrawHandle, pieces: &mut Vec<PieceInfo>, current_piece: &Option<PieceInfo>) {
@@ -146,13 +193,13 @@ impl UI {
         if current_piece.is_some_and(|piece| piece.file == file && piece.rank == rank) {
             color.a = 64;
         }
-        self.draw_piece_graphics(x, y, d, side, color, &piece);
+        self.draw_piece_graphics(x, y, d, side, color, piece);
         if side == self.board.side_to_move() {
             pieces.push(PieceInfo { x, y, file, rank, side, kind: piece });
         }
     }
 
-    fn get_texture(&self, side: board::Side, piece: &board::Piece) -> &Option<Texture2D> {
+    fn get_texture(&self, side: board::Side, piece: board::Piece) -> &Option<Texture2D> {
         match piece {
             board::Piece::King => &self.t_king[side],
             board::Piece::Queen => &self.t_queen[side],
@@ -163,7 +210,7 @@ impl UI {
         }
     }
 
-    fn draw_piece_graphics(&self, x: i32, y: i32, d: &mut RaylibDrawHandle, side: board::Side, color: Color, piece: &board::Piece) {
+    fn draw_piece_graphics(&self, x: i32, y: i32, d: &mut RaylibDrawHandle, side: board::Side, color: Color, piece: board::Piece) {
         d.draw_texture(self.get_texture(side, piece).as_ref().unwrap(), x, y, color);
     }
 }
