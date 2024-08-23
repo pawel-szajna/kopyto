@@ -1,8 +1,8 @@
 use std::str::Chars;
 
 pub type Side = usize;
-const WHITE: Side = 0;
-const BLACK: Side = 1;
+pub const WHITE: Side = 0;
+pub const BLACK: Side = 1;
 
 const MASK_SINGLE_RANK: u64 = 0b11111111;
 
@@ -16,7 +16,7 @@ const MASK_LAST_RANK: [u64; 2] = [MASK_SINGLE_RANK << (7 * 8), MASK_SINGLE_RANK]
 const MASK_SECOND_RANK: [u64; 2] = [MASK_SINGLE_RANK << 8, MASK_SINGLE_RANK << (6 * 8)];
 const MASK_EN_PASSANT_RANK: [u64; 2] = [MASK_SINGLE_RANK << (3 * 8), MASK_SINGLE_RANK << (4 * 8)];
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Piece {
     King,
     Queen,
@@ -87,6 +87,7 @@ impl Move {
 
     pub fn from_idx(from: usize, to: usize) -> Self {
         let mut m = Self::new();
+        println!("Making move from {} to {}", from, to);
         m.set_from(from);
         m.set_to(to);
         m
@@ -174,7 +175,7 @@ pub struct Board {
     en_passant: Option<u64>,
 }
 
-fn coords_to_mask(file: usize, rank: usize) -> u64 {
+pub fn coords_to_mask(file: usize, rank: usize) -> u64 {
     1u64 << (rank * 8usize + file)
 }
 
@@ -588,8 +589,21 @@ impl Board {
         self.any_piece & mask != 0
     }
 
-    fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
+    pub fn check_square(&self, mask: u64) -> Option<(Side, Piece)> {
         if !self.has_piece(mask) {
+            return None;
+        }
+
+        let white_piece = self.check_piece(WHITE, mask);
+        if white_piece.is_some() {
+            return Some((WHITE, white_piece.unwrap()));
+        }
+
+        Some((BLACK, self.check_piece(BLACK, mask).unwrap()))
+    }
+
+    fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
+        if !self.has_piece(mask) || (self.occupied[side] & mask) == 0 {
             return None;
         }
 
@@ -773,6 +787,14 @@ impl Board {
         if self.current_color == BLACK {
             self.full_moves_count -= 1;
         }
+    }
+
+    pub fn last_move(&self) -> Option<(u64, u64)>{
+        self.history.last().map_or(None, |x| Some((x.from, x.to)))
+    }
+
+    pub fn side_to_move(&self) -> Side {
+        self.current_color
     }
 }
 
