@@ -171,7 +171,7 @@ pub struct Board {
     knights: ColorBitboard,
     pawns: ColorBitboard,
 
-    occupied: ColorBitboard,
+    pub(super) occupied: ColorBitboard,
     any_piece: Bitboard,
 
     castle_kingside: ColorBool,

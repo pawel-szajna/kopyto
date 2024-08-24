@@ -1,5 +1,5 @@
-use crate::{board, masks};
 use crate::board::{coords_to_mask, Board, Move, Piece, Promotion, Side, BLACK, WHITE};
+use crate::masks;
 
 #[allow(private_bounds)]
 pub trait MoveGenerator: MoveGeneratorImpl {
@@ -19,6 +19,7 @@ trait MoveGeneratorImpl {
     fn generate_moves_for_impl(&self, mask: u64) -> Vec<Move>;
 
     fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move>;
+    fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move>;
 }
 
 impl MoveGeneratorImpl for Board {
@@ -31,6 +32,7 @@ impl MoveGeneratorImpl for Board {
             None => vec![],
             Some((side, piece)) => match piece {
                 Piece::Pawn => self.generate_pawn_moves(side, mask),
+                Piece::Knight => self.generate_knight_moves(side, mask),
                 _ => vec![],
             },
         }
@@ -93,6 +95,20 @@ impl MoveGeneratorImpl for Board {
             && !self.has_piece(double_move_target)
         {
             moves.push(Move::from_mask(mask, double_move_target));
+        }
+
+        moves
+    }
+
+    fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        let mut moves = vec![];
+        let mut moves_mask =
+            masks::KNIGHT_TARGETS[mask.trailing_zeros() as usize] & !self.occupied[side];
+
+        while moves_mask != 0 {
+            let extracted = 1u64 << moves_mask.trailing_zeros();
+            moves.push(Move::from_mask(mask, extracted));
+            moves_mask ^= extracted;
         }
 
         moves
@@ -250,25 +266,97 @@ mod tests {
                 "rnbqkbnr/pp1pp1pp/8/1Pp2p2/8/8/P1PPPPPP/RNBQKBNR w KQkq c6 0 3",
                 1,
                 4,
-                vec![
-                    a_move!("b5", "b6"),
-                    a_move!("b5", "c6"),
-                ],
+                vec![a_move!("b5", "b6"), a_move!("b5", "c6")],
             );
             piece_move_generation_test(
                 "rnbqkbnr/p2pp1pp/1p6/1Pp2p2/8/3P4/P1P1PPPP/RNBQKBNR w KQkq c6 0 4",
                 1,
                 4,
-                vec![
-                    a_move!("b5", "c6"),
-                ],
+                vec![a_move!("b5", "c6")],
             );
             piece_move_generation_test(
                 "rnbqkb1r/p2pp1pp/1pP2n2/8/5pP1/3P1N2/P1P1PP1P/RNBQKB1R b KQkq g3 0 6",
                 5,
                 3,
+                vec![a_move!("f4", "g3")],
+            );
+        }
+    }
+
+    mod knight {
+        use crate::movegen::tests::*;
+
+        #[test]
+        fn basic_moves() {
+            piece_move_generation_test(
+                "7k/8/3n4/8/2N5/8/8/7K w - - 0 1",
+                2,
+                3,
                 vec![
-                    a_move!("f4", "g3"),
+                    a_move!("c4", "b6"),
+                    a_move!("c4", "d6"),
+                    a_move!("c4", "a5"),
+                    a_move!("c4", "e5"),
+                    a_move!("c4", "a3"),
+                    a_move!("c4", "e3"),
+                    a_move!("c4", "b2"),
+                    a_move!("c4", "d2"),
+                ],
+            );
+            piece_move_generation_test(
+                "7k/8/1Q1n4/8/2N5/P3P3/1P1P4/7K w - - 0 1",
+                2,
+                3,
+                vec![
+                    a_move!("c4", "d6"),
+                    a_move!("c4", "a5"),
+                    a_move!("c4", "e5"),
+                ],
+            );
+            piece_move_generation_test(
+                "7k/8/1Q1n4/8/2N5/P3P3/1P1P4/7K b - - 0 1",
+                3,
+                5,
+                vec![
+                    a_move!("d6", "c8"),
+                    a_move!("d6", "e8"),
+                    a_move!("d6", "b7"),
+                    a_move!("d6", "f7"),
+                    a_move!("d6", "b5"),
+                    a_move!("d6", "f5"),
+                    a_move!("d6", "c4"),
+                    a_move!("d6", "e4"),
+                ],
+            );
+        }
+
+        #[test]
+        fn edge_moves() {
+            piece_move_generation_test(
+                "n6k/8/8/8/4P3/P2P4/1P6/7K b - - 2 4",
+                0,
+                7,
+                vec![a_move!("a8", "c7"), a_move!("a8", "b6")],
+            );
+            piece_move_generation_test(
+                "7k/1n6/8/8/4P3/P2P4/1P6/7K b - - 10 8",
+                1,
+                6,
+                vec![
+                    a_move!("b7", "d8"),
+                    a_move!("b7", "d6"),
+                    a_move!("b7", "c5"),
+                    a_move!("b7", "a5"),
+                ],
+            );
+            piece_move_generation_test(
+                "rnbqkbnr/1ppppppp/p7/8/8/7N/PPPPPPPP/RNBQKB1R w KQkq - 0 2",
+                7,
+                2,
+                vec![
+                    a_move!("h3", "g5"),
+                    a_move!("h3", "f4"),
+                    a_move!("h3", "g1"),
                 ],
             );
         }
