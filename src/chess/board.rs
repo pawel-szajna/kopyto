@@ -1,134 +1,14 @@
-use std::fmt;
-use std::str::Chars;
-use crate::masks;
+use super::masks;
+use super::moves::*;
+use super::util::*;
 
 pub type Side = usize;
 pub const WHITE: Side = 0;
 pub const BLACK: Side = 1;
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-pub enum Piece {
-    King,
-    Queen,
-    Rook,
-    Bishop,
-    Knight,
-    Pawn,
-}
-
 pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone)]
-pub struct Move {
-    m: u16,
-}
-
-impl fmt::Debug for Move {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let from = idx_to_str(self.get_from() as usize);
-        let to = idx_to_str(self.get_to() as usize);
-        match self.m & 0b100000000000000 != 0 {
-            true => write!(f, "{}{}+{:?}", from, to, self.get_promotion()),
-            false => write!(f, "{}{}", from, to),
-        }
-    }
-}
-
-#[repr(u16)]
-#[derive(Debug)]
-pub enum Promotion {
-    Queen = 0,
-    Rook = 1,
-    Bishop = 2,
-    Knight = 3,
-}
-
-impl From<u16> for Promotion {
-    fn from(value: u16) -> Self {
-        match value {
-            0 => Promotion::Queen,
-            1 => Promotion::Rook,
-            2 => Promotion::Bishop,
-            3 => Promotion::Knight,
-            _ => panic!("Invalid promotion"),
-        }
-    }
-}
-
-impl From<Promotion> for Piece {
-    fn from(value: Promotion) -> Self {
-        match value {
-            Promotion::Queen => Piece::Queen,
-            Promotion::Rook => Piece::Rook,
-            Promotion::Bishop => Piece::Bishop,
-            Promotion::Knight => Piece::Knight,
-        }
-    }
-}
-
-impl Move {
-    const MASK_FROM: u16 = 0b111111;
-    const MASK_TO: u16 = 0b111111000000;
-    const MASK_PROMOTION: u16 = 0b11000000000000;
-    const MASK_HAS_PROMOTION: u16 = 0b100000000000000;
-
-    pub fn new() -> Self {
-        Self { m: 0 }
-    }
-
-    pub fn from_str(from: &str, to: &str) -> Self {
-        Self::from_idx(str_to_idx(from), str_to_idx(to))
-    }
-
-    pub fn from_str_prom(from: &str, to: &str, promotion: Promotion) -> Self {
-        let mut m = Self::from_str(from, to);
-        m.set_promotion(promotion);
-        m
-    }
-
-    pub fn from_idx(from: usize, to: usize) -> Self {
-        let mut m = Self::new();
-        m.set_from(from);
-        m.set_to(to);
-        m
-    }
-
-    pub fn from_mask(from: u64, to: u64) -> Self {
-        Self::from_idx(from.trailing_zeros() as usize, to.trailing_zeros() as usize)
-    }
-
-    pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
-        let mut m = Self::from_idx(from, to);
-        m.set_promotion(promotion);
-        m
-    }
-
-    pub fn set_from(&mut self, from: usize) {
-        self.m |= (from as u16) & Self::MASK_FROM;
-    }
-
-    pub fn set_to(&mut self, to: usize) {
-        self.m |= ((to as u16) << 6) & Self::MASK_TO;
-    }
-
-    pub fn set_promotion(&mut self, promotion: Promotion) {
-        self.m |= (((promotion as u16) << 12) & Self::MASK_PROMOTION) | Self::MASK_HAS_PROMOTION;
-    }
-
-    pub fn get_from(&self) -> u16 {
-        self.m & Self::MASK_FROM
-    }
-
-    pub fn get_to(&self) -> u16 {
-        (self.m & Self::MASK_TO) >> 6
-    }
-
-    pub fn get_promotion(&self) -> Promotion {
-        Promotion::from((self.m & Self::MASK_PROMOTION) >> 12)
-    }
-}
 
 struct History {
     from: u64,
@@ -185,70 +65,6 @@ pub struct Board {
     full_moves_count: u32,
 
     en_passant: Option<u64>,
-}
-
-pub fn coords_to_mask(file: usize, rank: usize) -> u64 {
-    1u64 << coords_to_idx(file, rank)
-}
-
-pub fn coords_to_idx(file: usize, rank: usize) -> usize {
-    rank * 8 + file
-}
-
-fn idx_to_str(idx: usize) -> String {
-    let mut result = String::new();
-    let file = idx % 8;
-    let rank = (idx / 8) as u8;
-    result.push(match file {
-        0 => 'a',
-        1 => 'b',
-        2 => 'c',
-        3 => 'd',
-        4 => 'e',
-        5 => 'f',
-        6 => 'g',
-        7 => 'h',
-        _ => panic!("invalid file"),
-    });
-    result.push(('0' as u8 + rank + 1) as char);
-    result
-}
-
-fn mask_to_str(mask: u64) -> String {
-    idx_to_str(mask.trailing_zeros() as usize)
-}
-
-fn str_to_idx(pos: &str) -> usize {
-    fn get_file(pos: &mut Chars) -> usize {
-        match pos.next() {
-            Some('a') => 0,
-            Some('b') => 1,
-            Some('c') => 2,
-            Some('d') => 3,
-            Some('e') => 4,
-            Some('f') => 5,
-            Some('g') => 6,
-            Some('h') => 7,
-            _ => panic!("Invalid file"),
-        }
-    }
-    fn get_rank(pos: &mut Chars) -> usize {
-        match pos.next() {
-            Some('1') => 0,
-            Some('2') => 1,
-            Some('3') => 2,
-            Some('4') => 3,
-            Some('5') => 4,
-            Some('6') => 5,
-            Some('7') => 6,
-            Some('8') => 7,
-            _ => panic!("Invalid rank"),
-        }
-    }
-    let mut pos = pos.chars();
-    let file = get_file(&mut pos);
-    let rank = get_rank(&mut pos);
-    coords_to_idx(file, rank)
 }
 
 impl Board {
@@ -349,7 +165,8 @@ impl Board {
                 Some(' ') => break,
                 Some(file) if file.is_alphabetic() => {
                     let rank = fen.next().unwrap();
-                    board.en_passant = Some(1u64 << str_to_idx(format!("{}{}", file, rank).as_str()));
+                    board.en_passant =
+                        Some(1u64 << str_to_idx(format!("{}{}", file, rank).as_str()));
                 }
                 _ => panic!("Invalid fen, expected en passant data"),
             }
@@ -360,7 +177,9 @@ impl Board {
         loop {
             match fen.next() {
                 Some(' ') => break,
-                Some(x) if x.is_digit(10) => board.half_moves_clock = board.half_moves_clock * 10 + x.to_digit(10).unwrap(),
+                Some(x) if x.is_digit(10) => {
+                    board.half_moves_clock = board.half_moves_clock * 10 + x.to_digit(10).unwrap()
+                }
                 _ => panic!("Invalid fen, expected half move count"),
             }
         }
@@ -369,7 +188,9 @@ impl Board {
 
         loop {
             match fen.next() {
-                Some(x) if x.is_digit(10) => board.full_moves_count = board.full_moves_count * 10 + x.to_digit(10).unwrap(),
+                Some(x) if x.is_digit(10) => {
+                    board.full_moves_count = board.full_moves_count * 10 + x.to_digit(10).unwrap()
+                }
                 _ => break,
             }
         }
@@ -754,8 +575,14 @@ impl Board {
         if piece_type == Piece::Pawn
             && from_mask & masks::SECOND_RANK[side] != 0
             && to_mask & masks::EN_PASSANT_RANK[side] != 0
-            && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent] != 0 {
-            self.en_passant = Some(if side == WHITE { from_mask << 8 } else { from_mask >> 8 });
+            && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent]
+                != 0
+        {
+            self.en_passant = Some(if side == WHITE {
+                from_mask << 8
+            } else {
+                from_mask >> 8
+            });
         }
 
         self.put_piece(side, to_mask, piece_type);
@@ -803,7 +630,15 @@ impl Board {
 
         if piece_type == Piece::Pawn && last_move.en_passant == Some(last_move.to) {
             let capture_square = last_move.en_passant.unwrap();
-            self.put_piece(opponent, if side == WHITE { capture_square >> 8 } else { capture_square << 8 }, Piece::Pawn);
+            self.put_piece(
+                opponent,
+                if side == WHITE {
+                    capture_square >> 8
+                } else {
+                    capture_square << 8
+                },
+                Piece::Pawn,
+            );
         }
 
         self.remove_piece(last_move.to);
@@ -821,7 +656,7 @@ impl Board {
         }
     }
 
-    pub fn last_move(&self) -> Option<(u64, u64)>{
+    pub fn last_move(&self) -> Option<(u64, u64)> {
         self.history.last().map_or(None, |x| Some((x.from, x.to)))
     }
 
@@ -840,7 +675,10 @@ mod tests {
             if actual != fen {
                 let actual_board = self.export_graph();
                 let expected_board = Board::from_fen(fen).export_graph();
-                actual_board.split('\n').zip(expected_board.split('\n')).for_each(|x| { println!("{:>20}  {:>20}", x.0, x.1) });
+                actual_board
+                    .split('\n')
+                    .zip(expected_board.split('\n'))
+                    .for_each(|x| println!("{:>20}  {:>20}", x.0, x.1));
             }
             assert_eq!(actual, fen);
         }
@@ -848,12 +686,14 @@ mod tests {
 
     #[test]
     fn test_starting_position() {
-        Board::from_starting_position().assert_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        Board::from_starting_position()
+            .assert_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     }
 
     #[test]
     fn test_capture_moves() {
-        let mut board = Board::from_fen("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
+        let mut board =
+            Board::from_fen("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
         board.make_move_str("e4", "f5");
         board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
         board.make_move_str("c6", "b4");
@@ -869,7 +709,8 @@ mod tests {
         board.unmake_move();
         board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
         board.unmake_move();
-        board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
+        board
+            .assert_position("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
     }
 
     #[test]
@@ -908,7 +749,8 @@ mod tests {
 
     #[test]
     fn test_en_passant() {
-        let mut board = Board::from_fen("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
+        let mut board =
+            Board::from_fen("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
         board.make_move_str("d5", "e6");
         board.assert_position("rnbqkbnr/pppp1pp1/4P2p/8/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 3");
         board.make_move_str("d7", "d5");

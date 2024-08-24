@@ -1,5 +1,7 @@
-use crate::board::{coords_to_mask, Board, Move, Piece, Promotion, Side, BLACK, WHITE};
-use crate::masks;
+use super::board::{Board, Side, BLACK, WHITE};
+use super::moves::{Piece, Promotion, Move};
+use super::masks;
+use super::util;
 
 #[allow(private_bounds)]
 pub trait MoveGenerator: MoveGeneratorImpl {
@@ -8,7 +10,7 @@ pub trait MoveGenerator: MoveGeneratorImpl {
     }
 
     fn generate_moves_for(&self, file: usize, rank: usize) -> Vec<Move> {
-        self.generate_moves_for_impl(coords_to_mask(file, rank))
+        self.generate_moves_for_impl(util::coords_to_mask(file, rank))
     }
 }
 
@@ -125,8 +127,7 @@ macro_rules! a_move {
 }
 
 mod tests {
-    use crate::board::{Board, Move, Promotion};
-    use crate::movegen::MoveGenerator;
+    use super::*;
 
     fn piece_move_generation_test(fen: &str, file: usize, rank: usize, mut expected: Vec<Move>) {
         let board = Board::from_fen(fen);
@@ -140,7 +141,7 @@ mod tests {
     }
 
     mod pawn {
-        use crate::movegen::tests::*;
+        use super::*;
 
         #[test]
         fn basic_moves() {
@@ -284,7 +285,7 @@ mod tests {
     }
 
     mod knight {
-        use crate::movegen::tests::*;
+        use super::*;
 
         #[test]
         fn basic_moves() {
