@@ -1,6 +1,6 @@
 use super::board::{Board, Side, BLACK, WHITE};
-use super::moves::{Piece, Promotion, Move};
 use super::masks;
+use super::moves::{Move, Piece, Promotion};
 use super::util;
 
 #[allow(private_bounds)]
@@ -20,8 +20,11 @@ trait MoveGeneratorImpl {
     fn generate_moves_impl(&self) -> Vec<Move>;
     fn generate_moves_for_impl(&self, mask: u64) -> Vec<Move>;
 
+    fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Vec<Move>;
+
     fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move>;
     fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move>;
+    fn generate_king_moves(&self, side: Side, mask: u64) -> Vec<Move>;
 }
 
 impl MoveGeneratorImpl for Board {
@@ -35,6 +38,7 @@ impl MoveGeneratorImpl for Board {
             Some((side, piece)) => match piece {
                 Piece::Pawn => self.generate_pawn_moves(side, mask),
                 Piece::Knight => self.generate_knight_moves(side, mask),
+                Piece::King => self.generate_king_moves(side, mask),
                 _ => vec![],
             },
         }
@@ -102,15 +106,31 @@ impl MoveGeneratorImpl for Board {
         moves
     }
 
-    fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+    fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Vec<Move> {
         let mut moves = vec![];
-        let mut moves_mask =
-            masks::KNIGHT_TARGETS[mask.trailing_zeros() as usize] & !self.occupied[side];
+        let mut moves_mask = targets[mask.trailing_zeros() as usize] & !self.occupied[side];
 
         while moves_mask != 0 {
             let extracted = 1u64 << moves_mask.trailing_zeros();
             moves.push(Move::from_mask(mask, extracted));
             moves_mask ^= extracted;
+        }
+
+        moves
+    }
+
+    fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        self.generate_mask_moves(side, mask, &masks::KNIGHT_TARGETS)
+    }
+
+    fn generate_king_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        let mut moves = self.generate_mask_moves(side, mask, &masks::KING_TARGETS);
+
+        if self.can_castle_kingside(side) {
+            moves.push(Move::from_mask(mask, masks::CASTLE_KINGSIDE[side]));
+        }
+        if self.can_castle_queenside(side) {
+            moves.push(Move::from_mask(mask, masks::CASTLE_QUEENSIDE[side]));
         }
 
         moves
@@ -360,6 +380,98 @@ mod tests {
                     a_move!("h3", "g1"),
                 ],
             );
+        }
+    }
+
+    mod king {
+        use super::*;
+
+        #[test]
+        fn basic_moves() {
+            piece_move_generation_test(
+                "8/p6k/8/8/8/8/1K6/8 w - - 0 1",
+                1,
+                1,
+                vec![
+                    a_move!("b2", "a1"),
+                    a_move!("b2", "a2"),
+                    a_move!("b2", "a3"),
+                    a_move!("b2", "b1"),
+                    a_move!("b2", "b3"),
+                    a_move!("b2", "c1"),
+                    a_move!("b2", "c2"),
+                    a_move!("b2", "c3"),
+                ],
+            );
+            piece_move_generation_test(
+                "8/p6k/8/8/8/8/1K6/8 b - - 0 1",
+                7,
+                6,
+                vec![
+                    a_move!("h7", "g8"),
+                    a_move!("h7", "h8"),
+                    a_move!("h7", "g7"),
+                    a_move!("h7", "g6"),
+                    a_move!("h7", "h6"),
+                ],
+            );
+            piece_move_generation_test(
+                "7k/p7/8/8/8/8/8/K7 w - - 4 3",
+                0,
+                0,
+                vec![
+                    a_move!("a1", "a2"),
+                    a_move!("a1", "b2"),
+                    a_move!("a1", "b1"),
+                ],
+            );
+        }
+
+        #[test]
+        fn castling() {
+            piece_move_generation_test(
+                "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1",
+                4,
+                0,
+                vec![
+                    a_move!("e1", "d1"),
+                    a_move!("e1", "f1"),
+                    a_move!("e1", "g1"),
+                    a_move!("e1", "c1"),
+                ],
+            );
+            piece_move_generation_test(
+                "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Qkq - 0 1",
+                4,
+                0,
+                vec![
+                    a_move!("e1", "d1"),
+                    a_move!("e1", "f1"),
+                    a_move!("e1", "c1"),
+                ],
+            );
+            piece_move_generation_test(
+                "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Kkq - 0 1",
+                4,
+                0,
+                vec![
+                    a_move!("e1", "d1"),
+                    a_move!("e1", "f1"),
+                    a_move!("e1", "g1"),
+                ],
+            );
+            piece_move_generation_test(
+                "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w q - 0 1",
+                4,
+                0,
+                vec![a_move!("e1", "d1"), a_move!("e1", "f1")],
+            );
+            piece_move_generation_test(
+                "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R b kq - 0 1",
+                4,
+                7,
+                vec![a_move!("e8", "d8")],
+            )
         }
     }
 }

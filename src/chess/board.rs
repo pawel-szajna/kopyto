@@ -54,8 +54,8 @@ pub struct Board {
     pub(super) occupied: ColorBitboard,
     any_piece: Bitboard,
 
-    castle_kingside: ColorBool,
-    castle_queenside: ColorBool,
+    pub(super) castle_kingside: ColorBool,
+    pub(super) castle_queenside: ColorBool,
 
     current_color: Side,
 
@@ -501,6 +501,23 @@ impl Board {
         self.make_move(Move::from_str(from, to));
     }
 
+    pub fn can_castle_kingside(&self, side: Side) -> bool {
+        // TODO moving through attack
+        self.castle_kingside[side]
+            && !self.has_piece(masks::CASTLE_KINGSIDE[side])
+            && !self.has_piece(masks::CASTLE_KINGSIDE_BLOCKER[side])
+            && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
+    }
+
+    pub fn can_castle_queenside(&self, side: Side) -> bool {
+        // TODO moving through attack
+        self.castle_queenside[side]
+            && !self.has_piece(masks::CASTLE_QUEENSIDE[side])
+            && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
+            && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
+            && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+    }
+
     pub fn make_move(&mut self, m: Move) {
         let from_mask = 1u64 << m.get_from();
         let to_mask = 1u64 << m.get_to();
@@ -533,17 +550,10 @@ impl Board {
         }
 
         if piece_type == Piece::King {
-            // TODO: check if not attacked when castling
-            if self.castle_kingside[side]
-                && to_mask == masks::CASTLE_KINGSIDE[side]
-                && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
-            {
+            if to_mask == masks::CASTLE_KINGSIDE[side] && self.can_castle_kingside(side) {
                 self.remove_piece(masks::ROOK_KINGSIDE[side]);
                 self.put_piece(side, masks::ROOK_CASTLED_KINGSIDE[side], Piece::Rook);
-            } else if self.castle_queenside[side]
-                && to_mask == masks::CASTLE_QUEENSIDE[side]
-                && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
-            {
+            } else if to_mask == masks::CASTLE_QUEENSIDE[side] && self.can_castle_queenside(side) {
                 self.remove_piece(masks::ROOK_QUEENSIDE[side]);
                 self.put_piece(side, masks::ROOK_CASTLED_QUEENSIDE[side], Piece::Rook);
             }
