@@ -662,6 +662,10 @@ impl Board {
         self.occupied[side] & mask != 0
     }
 
+    pub fn en_passant(&self, mask: u64) -> bool {
+        self.en_passant.is_some_and(|en_passant| mask == en_passant)
+    }
+
     pub fn check_square(&self, mask: u64) -> Option<(Side, Piece)> {
         if !self.has_piece(mask) {
             return None;

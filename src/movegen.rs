@@ -38,20 +38,29 @@ impl MoveGeneratorImpl for Board {
 
     fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move> {
         let mut moves = vec![];
+
         let basic_direction = if side == WHITE { mask << 8 } else { mask >> 8 };
         let blockade = self.has_piece(basic_direction);
+
         if !blockade {
             moves.push(Move::from_mask(mask, basic_direction));
         }
+
         let piece_to_left = if side == WHITE { mask << 7 } else { mask >> 9 };
         let piece_to_right = if side == WHITE { mask << 9 } else { mask >> 7 };
         let opponent = if side == WHITE { BLACK } else { WHITE };
-        if board::MASK_FILES[0] & mask == 0 && self.has_side_piece(opponent, piece_to_left) {
+
+        if board::MASK_FILES[0] & mask == 0
+            && (self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left))
+        {
             moves.push(Move::from_mask(mask, piece_to_left));
         }
-        if board::MASK_FILES[7] & mask == 0 && self.has_side_piece(opponent, piece_to_right) {
+        if board::MASK_FILES[7] & mask == 0
+            && (self.has_side_piece(opponent, piece_to_right) || self.en_passant(piece_to_right))
+        {
             moves.push(Move::from_mask(mask, piece_to_right));
         }
+
         if board::MASK_RANKS_RELATIVE[6][side] & mask != 0 {
             moves = moves
                 .into_iter()
@@ -72,17 +81,20 @@ impl MoveGeneratorImpl for Board {
                 })
                 .collect();
         }
+
         let double_move_target = if side == WHITE {
             mask << 16
         } else {
             mask >> 16
         };
+
         if !blockade
             && board::MASK_RANKS_RELATIVE[1][side] & mask != 0
             && !self.has_piece(double_move_target)
         {
             moves.push(Move::from_mask(mask, double_move_target));
         }
+
         moves
     }
 }
@@ -229,7 +241,36 @@ mod tests {
                     a_move!("b7", "c8", Promotion::Bishop),
                     a_move!("b7", "c8", Promotion::Knight),
                 ],
-            )
+            );
+        }
+
+        #[test]
+        fn en_passant() {
+            piece_move_generation_test(
+                "rnbqkbnr/pp1pp1pp/8/1Pp2p2/8/8/P1PPPPPP/RNBQKBNR w KQkq c6 0 3",
+                1,
+                4,
+                vec![
+                    a_move!("b5", "b6"),
+                    a_move!("b5", "c6"),
+                ],
+            );
+            piece_move_generation_test(
+                "rnbqkbnr/p2pp1pp/1p6/1Pp2p2/8/3P4/P1P1PPPP/RNBQKBNR w KQkq c6 0 4",
+                1,
+                4,
+                vec![
+                    a_move!("b5", "c6"),
+                ],
+            );
+            piece_move_generation_test(
+                "rnbqkb1r/p2pp1pp/1pP2n2/8/5pP1/3P1N2/P1P1PP1P/RNBQKB1R b KQkq g3 0 6",
+                5,
+                3,
+                vec![
+                    a_move!("f4", "g3"),
+                ],
+            );
         }
     }
 }
