@@ -1,55 +1,10 @@
 use std::fmt;
 use std::str::Chars;
+use crate::masks;
 
 pub type Side = usize;
 pub const WHITE: Side = 0;
 pub const BLACK: Side = 1;
-
-const MASK_SINGLE_RANK: u64 = 0b11111111;
-const MASK_SINGLE_FILE: u64 = 0x0101010101010101;
-
-pub const MASK_RANKS: [u64; 8] = [
-    MASK_SINGLE_RANK << (8 * 0),
-    MASK_SINGLE_RANK << (8 * 1),
-    MASK_SINGLE_RANK << (8 * 2),
-    MASK_SINGLE_RANK << (8 * 3),
-    MASK_SINGLE_RANK << (8 * 4),
-    MASK_SINGLE_RANK << (8 * 5),
-    MASK_SINGLE_RANK << (8 * 6),
-    MASK_SINGLE_RANK << (8 * 7),
-];
-
-pub const MASK_RANKS_RELATIVE: [[u64; 2]; 8] = [
-    [MASK_RANKS[0], MASK_RANKS[7]],
-    [MASK_RANKS[1], MASK_RANKS[6]],
-    [MASK_RANKS[2], MASK_RANKS[5]],
-    [MASK_RANKS[3], MASK_RANKS[4]],
-    [MASK_RANKS[4], MASK_RANKS[3]],
-    [MASK_RANKS[5], MASK_RANKS[2]],
-    [MASK_RANKS[6], MASK_RANKS[1]],
-    [MASK_RANKS[7], MASK_RANKS[0]],
-];
-
-pub const MASK_FILES: [u64; 8] = [
-    MASK_SINGLE_FILE << 0,
-    MASK_SINGLE_FILE << 1,
-    MASK_SINGLE_FILE << 2,
-    MASK_SINGLE_FILE << 3,
-    MASK_SINGLE_FILE << 4,
-    MASK_SINGLE_FILE << 5,
-    MASK_SINGLE_FILE << 6,
-    MASK_SINGLE_FILE << 7,
-];
-
-const MASK_ROOK_QUEENSIDE: [u64; 2] = [1u64, 1u64 << (7 * 8)];
-const MASK_ROOK_KINGSIDE: [u64; 2] = [1u64 << 7, 1u64 << (7 * 8 + 7)];
-const MASK_ROOK_CASTLED_QUEENSIDE: [u64; 2] = [1u64 << 3, 1u64 << (7 * 8 + 3)];
-const MASK_ROOK_CASTLED_KINGSIDE: [u64; 2] = [1u64 << 5, 1u64 << (7 * 8 + 5)];
-const MASK_CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (7 * 8 + 2)];
-const MASK_CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (7 * 8 + 6)];
-pub const MASK_LAST_RANK: [u64; 2] = [MASK_RANKS[7], MASK_RANKS[0]];
-pub const MASK_SECOND_RANK: [u64; 2] = [MASK_RANKS[1], MASK_RANKS[6]];
-const MASK_EN_PASSANT_RANK: [u64; 2] = [MASK_RANKS[3], MASK_RANKS[4]];
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Piece {
@@ -749,9 +704,9 @@ impl Board {
         let mut piece_type = self.check_piece(side, from_mask).unwrap();
 
         if piece_type == Piece::Rook {
-            if self.castle_queenside[side] && from_mask == MASK_ROOK_QUEENSIDE[side] {
+            if self.castle_queenside[side] && from_mask == masks::ROOK_QUEENSIDE[side] {
                 self.castle_queenside[side] = false;
-            } else if self.castle_kingside[side] && from_mask == MASK_ROOK_KINGSIDE[side] {
+            } else if self.castle_kingside[side] && from_mask == masks::ROOK_KINGSIDE[side] {
                 self.castle_kingside[side] = false;
             }
         }
@@ -759,17 +714,17 @@ impl Board {
         if piece_type == Piece::King {
             // TODO: check if not attacked when castling
             if self.castle_kingside[side]
-                && to_mask == MASK_CASTLE_KINGSIDE[side]
-                && self.check_piece(side, MASK_ROOK_KINGSIDE[side]) == Some(Piece::Rook)
+                && to_mask == masks::CASTLE_KINGSIDE[side]
+                && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
             {
-                self.remove_piece(MASK_ROOK_KINGSIDE[side]);
-                self.put_piece(side, MASK_ROOK_CASTLED_KINGSIDE[side], Piece::Rook);
+                self.remove_piece(masks::ROOK_KINGSIDE[side]);
+                self.put_piece(side, masks::ROOK_CASTLED_KINGSIDE[side], Piece::Rook);
             } else if self.castle_queenside[side]
-                && to_mask == MASK_CASTLE_QUEENSIDE[side]
-                && self.check_piece(side, MASK_ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+                && to_mask == masks::CASTLE_QUEENSIDE[side]
+                && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
             {
-                self.remove_piece(MASK_ROOK_QUEENSIDE[side]);
-                self.put_piece(side, MASK_ROOK_CASTLED_QUEENSIDE[side], Piece::Rook);
+                self.remove_piece(masks::ROOK_QUEENSIDE[side]);
+                self.put_piece(side, masks::ROOK_CASTLED_QUEENSIDE[side], Piece::Rook);
             }
             self.castle_queenside[side] = false;
             self.castle_kingside[side] = false;
@@ -781,7 +736,7 @@ impl Board {
             self.half_moves_clock += 1;
         }
 
-        if piece_type == Piece::Pawn && (to_mask & MASK_LAST_RANK[side]) != 0 {
+        if piece_type == Piece::Pawn && (to_mask & masks::LAST_RANK[side]) != 0 {
             piece_type = Piece::from(m.get_promotion());
             history_entry.promotion = true;
         }
@@ -797,9 +752,9 @@ impl Board {
         self.en_passant = None;
 
         if piece_type == Piece::Pawn
-            && from_mask & MASK_SECOND_RANK[side] != 0
-            && to_mask & MASK_EN_PASSANT_RANK[side] != 0
-            && (to_mask << 1 | to_mask >> 1) & MASK_EN_PASSANT_RANK[side] & self.pawns[opponent] != 0 {
+            && from_mask & masks::SECOND_RANK[side] != 0
+            && to_mask & masks::EN_PASSANT_RANK[side] != 0
+            && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent] != 0 {
             self.en_passant = Some(if side == WHITE { from_mask << 8 } else { from_mask >> 8 });
         }
 
@@ -825,16 +780,16 @@ impl Board {
         let opponent = if side == WHITE { BLACK } else { WHITE };
 
         if self.castle_kingside[side] != last_move.castle_kingside[side]
-            && last_move.to == MASK_CASTLE_KINGSIDE[side]
+            && last_move.to == masks::CASTLE_KINGSIDE[side]
         {
-            self.remove_piece(MASK_ROOK_CASTLED_KINGSIDE[side]);
-            self.put_piece(side, MASK_ROOK_KINGSIDE[side], Piece::Rook);
+            self.remove_piece(masks::ROOK_CASTLED_KINGSIDE[side]);
+            self.put_piece(side, masks::ROOK_KINGSIDE[side], Piece::Rook);
         }
         if self.castle_queenside[side] != last_move.castle_queenside[side]
-            && last_move.to == MASK_CASTLE_QUEENSIDE[side]
+            && last_move.to == masks::CASTLE_QUEENSIDE[side]
         {
-            self.remove_piece(MASK_ROOK_CASTLED_QUEENSIDE[side]);
-            self.put_piece(side, MASK_ROOK_QUEENSIDE[side], Piece::Rook);
+            self.remove_piece(masks::ROOK_CASTLED_QUEENSIDE[side]);
+            self.put_piece(side, masks::ROOK_QUEENSIDE[side], Piece::Rook);
         }
 
         self.castle_kingside = last_move.castle_kingside;

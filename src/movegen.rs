@@ -1,4 +1,4 @@
-use crate::board;
+use crate::{board, masks};
 use crate::board::{coords_to_mask, Board, Move, Piece, Promotion, Side, BLACK, WHITE};
 
 #[allow(private_bounds)]
@@ -50,18 +50,18 @@ impl MoveGeneratorImpl for Board {
         let piece_to_right = if side == WHITE { mask << 9 } else { mask >> 7 };
         let opponent = if side == WHITE { BLACK } else { WHITE };
 
-        if board::MASK_FILES[0] & mask == 0
+        if masks::FILES[0] & mask == 0
             && (self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left))
         {
             moves.push(Move::from_mask(mask, piece_to_left));
         }
-        if board::MASK_FILES[7] & mask == 0
+        if masks::FILES[7] & mask == 0
             && (self.has_side_piece(opponent, piece_to_right) || self.en_passant(piece_to_right))
         {
             moves.push(Move::from_mask(mask, piece_to_right));
         }
 
-        if board::MASK_RANKS_RELATIVE[6][side] & mask != 0 {
+        if masks::RANKS_RELATIVE[6][side] & mask != 0 {
             moves = moves
                 .into_iter()
                 .flat_map(|m| {
@@ -89,7 +89,7 @@ impl MoveGeneratorImpl for Board {
         };
 
         if !blockade
-            && board::MASK_RANKS_RELATIVE[1][side] & mask != 0
+            && masks::RANKS_RELATIVE[1][side] & mask != 0
             && !self.has_piece(double_move_target)
         {
             moves.push(Move::from_mask(mask, double_move_target));

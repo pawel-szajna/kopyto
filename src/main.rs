@@ -1,6 +1,7 @@
 mod board;
 mod ui;
 mod movegen;
+mod masks;
 
 fn main() {
     let board = board::Board::from_starting_position();
