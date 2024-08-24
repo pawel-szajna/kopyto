@@ -29,7 +29,14 @@ trait MoveGeneratorImpl {
 
 impl MoveGeneratorImpl for Board {
     fn generate_moves_impl(&self) -> Vec<Move> {
-        Vec::<Move>::new()
+        let mut result = vec![];
+        let mut all_pieces = self.occupied[self.side_to_move()];
+        while all_pieces != 0 {
+            let extracted = 1u64 << all_pieces.trailing_zeros();
+            result.append(&mut self.generate_moves_for_impl(extracted));
+            all_pieces ^= extracted;
+        }
+        result
     }
 
     fn generate_moves_for_impl(&self, mask: u64) -> Vec<Move> {
@@ -158,6 +165,60 @@ mod tests {
         expected.sort_unstable();
 
         assert_eq!(generated, expected);
+    }
+
+    mod perft {
+        use super::*;
+
+        fn perft(board: &mut Board, depth: usize) -> u64 {
+            let mut nodes = 0;
+            if depth == 0 {
+                return 1;
+            }
+
+            let moves = board.generate_moves();
+            for m in &moves {
+                board.make_move(m.clone());
+                nodes += perft(board, depth - 1);
+                board.unmake_move();
+            }
+
+            nodes
+        }
+
+        fn perft_run(fen: &str, depth: usize, expected: u64) {
+            let mut board = Board::from_fen(fen);
+            assert_eq!(perft(&mut board, depth), expected);
+        }
+
+        fn perft_initial(depth: usize, expected: u64) {
+            perft_run(
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                depth,
+                expected,
+            );
+        }
+
+        #[test]
+        fn perft_initial_0() {
+            perft_initial(0, 1);
+        }
+
+        #[test]
+        fn perft_initial_1() {
+            perft_initial(1, 20);
+        }
+
+        #[test]
+        fn perft_initial_2() {
+            perft_initial(2, 400);
+        }
+
+        #[test]
+        #[ignore]
+        fn perft_initial_3() {
+            perft_initial(3, 8902);
+        }
     }
 
     mod pawn {
