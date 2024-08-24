@@ -16,6 +16,38 @@ pub trait MoveGenerator: MoveGeneratorImpl {
 
 impl MoveGenerator for Board {}
 
+fn extract_mask_to_moves(from: u64, mut moves_mask: u64, moves: &mut Vec<Move>) {
+    while moves_mask != 0 {
+        let extracted = 1u64 << moves_mask.trailing_zeros();
+        moves.push(Move::from_mask(from, extracted));
+        moves_mask ^= extracted;
+    }
+}
+
+fn collect_sliders(
+    mut slider: u64,
+    diff: isize,
+    boundary: u64,
+    friendly: u64,
+    enemy: u64,
+    attacked_squares: &mut u64,
+) {
+    while slider & boundary != 0 {
+        if diff >= 0 {
+            slider = slider.checked_shl(diff as u32).unwrap_or(0);
+        } else {
+            slider = slider.checked_shr(-diff as u32).unwrap_or(0);
+        }
+        if friendly & slider != 0 {
+            break;
+        }
+        *attacked_squares |= slider;
+        if enemy & slider != 0 {
+            break;
+        }
+    }
+}
+
 trait MoveGeneratorImpl {
     fn generate_moves_impl(&self) -> Vec<Move>;
     fn generate_moves_for_impl(&self, mask: u64) -> Vec<Move>;
@@ -25,6 +57,8 @@ trait MoveGeneratorImpl {
     fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move>;
     fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move>;
     fn generate_king_moves(&self, side: Side, mask: u64) -> Vec<Move>;
+    fn generate_rook_moves(&self, side: Side, mask: u64) -> Vec<Move>;
+    fn generate_bishop_moves(&self, side: Side, mask: u64) -> Vec<Move>;
 }
 
 impl MoveGeneratorImpl for Board {
@@ -46,9 +80,18 @@ impl MoveGeneratorImpl for Board {
                 Piece::Pawn => self.generate_pawn_moves(side, mask),
                 Piece::Knight => self.generate_knight_moves(side, mask),
                 Piece::King => self.generate_king_moves(side, mask),
+                Piece::Rook => self.generate_rook_moves(side, mask),
+                Piece::Bishop => self.generate_bishop_moves(side, mask),
                 _ => vec![],
             },
         }
+    }
+
+    fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Vec<Move> {
+        let mut moves = vec![];
+        let moves_mask = targets[mask.trailing_zeros() as usize] & !self.occupied[side];
+        extract_mask_to_moves(mask, moves_mask, &mut moves);
+        moves
     }
 
     fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move> {
@@ -113,19 +156,6 @@ impl MoveGeneratorImpl for Board {
         moves
     }
 
-    fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Vec<Move> {
-        let mut moves = vec![];
-        let mut moves_mask = targets[mask.trailing_zeros() as usize] & !self.occupied[side];
-
-        while moves_mask != 0 {
-            let extracted = 1u64 << moves_mask.trailing_zeros();
-            moves.push(Move::from_mask(mask, extracted));
-            moves_mask ^= extracted;
-        }
-
-        moves
-    }
-
     fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move> {
         self.generate_mask_moves(side, mask, &masks::KNIGHT_TARGETS)
     }
@@ -139,6 +169,103 @@ impl MoveGeneratorImpl for Board {
         if self.can_castle_queenside(side) {
             moves.push(Move::from_mask(mask, masks::CASTLE_QUEENSIDE[side]));
         }
+
+        moves
+    }
+
+    fn generate_rook_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        let mut moves = vec![];
+        let opponent = if side == WHITE { BLACK } else { WHITE };
+
+        let mut attacked_squares = 0u64;
+
+        let idx = mask.trailing_zeros() as usize;
+        let file = idx % 8;
+        let rank = idx / 8;
+
+        let rank_guard = masks::RANKS[rank] & !(masks::FILES[0] | masks::FILES[7]);
+        let file_guard = masks::FILES[file] & !(masks::RANKS[0] | masks::RANKS[7]);
+
+        collect_sliders(
+            mask,
+            -1,
+            rank_guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+        collect_sliders(
+            mask,
+            1,
+            rank_guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+        collect_sliders(
+            mask,
+            8,
+            file_guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+        collect_sliders(
+            mask,
+            -8,
+            file_guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+
+        extract_mask_to_moves(mask, attacked_squares, &mut moves);
+
+        moves
+    }
+
+    fn generate_bishop_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        let mut moves = vec![];
+        let opponent = if side == WHITE { BLACK } else { WHITE };
+
+        let mut attacked_squares = 0u64;
+
+        let guard = !(masks::RANKS[0] | masks::RANKS[7] | masks::FILES[0] | masks::FILES[7]);
+
+        collect_sliders(
+            mask,
+            -7,
+            guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+        collect_sliders(
+            mask,
+            -9,
+            guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+        collect_sliders(
+            mask,
+            7,
+            guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+        collect_sliders(
+            mask,
+            9,
+            guard,
+            self.occupied[side],
+            self.occupied[opponent],
+            &mut attacked_squares,
+        );
+
+        extract_mask_to_moves(mask, attacked_squares, &mut moves);
 
         moves
     }
