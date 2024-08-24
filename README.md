@@ -1,0 +1,3 @@
+# kopyto
+
+Chess engine experiment
