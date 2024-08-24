@@ -1,13 +1,14 @@
-use crate::board::{coords_to_idx, Board, Move};
+use crate::chess::board::Side;
+use crate::chess::moves::{Move, Piece, Promotion};
+use crate::chess::moves_generation::MoveGenerator;
+use crate::chess::{board, util};
 use raylib::prelude::*;
-use crate::board;
-use crate::movegen::MoveGenerator;
 
 type TexturePerColor = [Option<Texture2D>; 2];
 const NO_TEXTURE: TexturePerColor = [None, None];
 
 pub struct UI {
-    board: Board,
+    board: board::Board,
 
     t_pawn: TexturePerColor,
     t_king: TexturePerColor,
@@ -19,9 +20,18 @@ pub struct UI {
     legal_moves: Vec<Move>,
 }
 
-const SQUARE: [Color; 2] = [Color::new(188, 143, 143, 255), Color::new(245, 233, 220, 255)];
-const SQUARE_LAST_MOVE: [Color; 2] = [Color::new(183, 188, 143, 255), Color::new(217, 222, 177, 255)];
-const SQUARE_LEGAL: [Color; 2] = [Color::new(158, 143, 188, 255), Color::new(207, 188, 214, 255)];
+const SQUARE: [Color; 2] = [
+    Color::new(188, 143, 143, 255),
+    Color::new(245, 233, 220, 255),
+];
+const SQUARE_LAST_MOVE: [Color; 2] = [
+    Color::new(183, 188, 143, 255),
+    Color::new(217, 222, 177, 255),
+];
+const SQUARE_LEGAL: [Color; 2] = [
+    Color::new(158, 143, 188, 255),
+    Color::new(207, 188, 214, 255),
+];
 const PROMOTION_BACKGROUND: Color = Color::new(255, 255, 255, 192);
 
 #[derive(Copy, Clone)]
@@ -31,11 +41,11 @@ struct PieceInfo {
     file: usize,
     rank: usize,
     side: board::Side,
-    kind: board::Piece,
+    kind: Piece,
 }
 
 impl UI {
-    pub fn new(board: Board) -> Self {
+    pub fn new(board: board::Board) -> Self {
         Self {
             board,
 
@@ -51,7 +61,12 @@ impl UI {
     }
 
     fn load_textures(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
-        let mut load = |filename| Some(rl.load_texture(&thread, filename).unwrap_or_else(|s| panic!("Cannot load texture: {}", s)));
+        let mut load = |filename| {
+            Some(
+                rl.load_texture(&thread, filename)
+                    .unwrap_or_else(|s| panic!("Cannot load texture: {}", s)),
+            )
+        };
         self.t_pawn = [load("res/plt60.png"), load("res/pdt60.png")];
         self.t_king = [load("res/klt60.png"), load("res/kdt60.png")];
         self.t_queen = [load("res/qlt60.png"), load("res/qdt60.png")];
@@ -88,14 +103,27 @@ impl UI {
 
                 d.clear_background(Color::BLACK);
                 d.draw_text("kopyto", 16, 16, 16, Color::WHITE);
-                d.draw_text(self.board.export_fen().as_str(), 16, d.get_screen_height() - 32, 16, Color::WHITE);
+                d.draw_text(
+                    self.board.export_fen().as_str(),
+                    16,
+                    d.get_screen_height() - 32,
+                    16,
+                    Color::WHITE,
+                );
                 d.draw_fps(d.get_screen_width() - 108, 16);
 
                 self.draw_board(&mut d, &mut pieces, &current_piece);
 
                 if current_piece.is_some() && promotion_window.is_none() {
                     let current_piece = current_piece.unwrap();
-                    self.draw_piece_graphics(mouse_x - 30, mouse_y - 30, &mut d, current_piece.side, Color::WHITE, current_piece.kind);
+                    self.draw_piece_graphics(
+                        mouse_x - 30,
+                        mouse_y - 30,
+                        &mut d,
+                        current_piece.side,
+                        Color::WHITE,
+                        current_piece.kind,
+                    );
                 }
 
                 if promotion_window.is_some() {
@@ -104,9 +132,14 @@ impl UI {
                 }
             }
 
-            if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
+            {
                 for piece in &pieces {
-                    if mouse_x > piece.x && mouse_x < piece.x + 60 && mouse_y > piece.y && mouse_y < piece.y + 60 {
+                    if mouse_x > piece.x
+                        && mouse_x < piece.x + 60
+                        && mouse_y > piece.y
+                        && mouse_y < piece.y + 60
+                    {
                         current_piece = Some(piece.clone());
                         self.legal_moves = self.board.generate_moves_for(piece.file, piece.rank);
                         break;
@@ -114,35 +147,58 @@ impl UI {
                 }
             }
 
-            if promotion_window.is_some() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+            if promotion_window.is_some()
+                && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT)
+            {
                 let piece = current_piece.unwrap();
                 let (target_file, target_rank) = promotion_window.unwrap();
                 let x = 160 + (target_file as i32) * 60;
                 let y = 60;
                 if mouse_x > x && mouse_x < x + 60 && mouse_y > y && mouse_y < y + 60 * 4 {
                     let target_piece = match mouse_y - y {
-                        y if y < 60 * 1 => board::Promotion::Queen,
-                        y if y < 60 * 2 => board::Promotion::Rook,
-                        y if y < 60 * 3 => board::Promotion::Bishop,
-                        _ => board::Promotion::Knight,
+                        y if y < 60 * 1 => Promotion::Queen,
+                        y if y < 60 * 2 => Promotion::Rook,
+                        y if y < 60 * 3 => Promotion::Bishop,
+                        _ => Promotion::Knight,
                     };
-                    self.board.make_move(board::Move::from_idx_prom(piece.rank * 8usize + piece.file, target_rank * 8usize + target_file, target_piece));
+                    self.board.make_move(Move::from_idx_prom(
+                        piece.rank * 8usize + piece.file,
+                        target_rank * 8usize + target_file,
+                        target_piece,
+                    ));
                 }
                 current_piece = None;
                 promotion_window = None;
                 self.legal_moves.clear();
             }
 
-            if current_piece.is_some() && promotion_window.is_none() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
-                if mouse_x > 160 && mouse_x < 160 + (8 * 60) && mouse_y > 60 && mouse_y < 60 + (8 * 60) {
+            if current_piece.is_some()
+                && promotion_window.is_none()
+                && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT)
+            {
+                if mouse_x > 160
+                    && mouse_x < 160 + (8 * 60)
+                    && mouse_y > 60
+                    && mouse_y < 60 + (8 * 60)
+                {
                     let target_file = (mouse_x as usize - 160) / 60;
                     let target_rank = 7 - (mouse_y as usize - 60) / 60;
                     let piece = current_piece.unwrap();
                     if target_file != piece.file || target_rank != piece.rank {
-                        if piece.kind == board::Piece::Pawn && target_rank == if self.board.side_to_move() == board::WHITE { 7 } else { 0 } {
+                        if piece.kind == Piece::Pawn
+                            && target_rank
+                                == if self.board.side_to_move() == board::WHITE {
+                                    7
+                                } else {
+                                    0
+                                }
+                        {
                             promotion_window = Some((target_file, target_rank));
                         } else {
-                            self.board.make_move(board::Move::from_idx(piece.rank * 8usize + piece.file, target_rank * 8usize + target_file));
+                            self.board.make_move(Move::from_idx(
+                                piece.rank * 8usize + piece.file,
+                                target_rank * 8usize + target_file,
+                            ));
                             current_piece = None;
                             self.legal_moves.clear();
                         }
@@ -167,16 +223,21 @@ impl UI {
 
         d.draw_rectangle(x, y, 60, 60 * 4, PROMOTION_BACKGROUND);
         d.draw_rectangle_lines(x, y, 60, 60 * 4, Color::BLACK);
-        self.draw_piece_graphics(x, y, d, side, Color::WHITE, board::Piece::Queen);
-        self.draw_piece_graphics(x, y + 60, d, side, Color::WHITE, board::Piece::Rook);
-        self.draw_piece_graphics(x, y + 60 * 2, d, side, Color::WHITE, board::Piece::Bishop);
-        self.draw_piece_graphics(x, y + 60 * 3, d, side, Color::WHITE, board::Piece::Knight);
+        self.draw_piece_graphics(x, y, d, side, Color::WHITE, Piece::Queen);
+        self.draw_piece_graphics(x, y + 60, d, side, Color::WHITE, Piece::Rook);
+        self.draw_piece_graphics(x, y + 60 * 2, d, side, Color::WHITE, Piece::Bishop);
+        self.draw_piece_graphics(x, y + 60 * 3, d, side, Color::WHITE, Piece::Knight);
     }
 
-    fn draw_board(&self, d: &mut RaylibDrawHandle, pieces: &mut Vec<PieceInfo>, current_piece: &Option<PieceInfo>) {
+    fn draw_board(
+        &self,
+        d: &mut RaylibDrawHandle,
+        pieces: &mut Vec<PieceInfo>,
+        current_piece: &Option<PieceInfo>,
+    ) {
         for rank in 0i32..8 {
             for file in 0i32..8 {
-                let current_square = board::coords_to_mask(file as usize, rank as usize);
+                let current_square = util::coords_to_mask(file as usize, rank as usize);
                 let square_shade = ((rank + file) % 2) as usize;
                 let mut color = SQUARE[square_shade];
                 let last_move = self.board.last_move();
@@ -186,18 +247,41 @@ impl UI {
                         color = SQUARE_LAST_MOVE[square_shade];
                     }
                 }
-                if self.legal_moves.iter().any(|m| m.get_to() == coords_to_idx(file as usize, rank as usize) as u16) {
+                if self
+                    .legal_moves
+                    .iter()
+                    .any(|m| m.get_to() == util::coords_to_idx(file as usize, rank as usize) as u16)
+                {
                     color = SQUARE_LEGAL[square_shade];
                 }
                 let x = 160 + file * 60;
                 let y = 60 + (7 - rank) * 60;
                 d.draw_rectangle(x, y, 60, 60, color);
-                self.draw_piece(x, y, file as usize, rank as usize, d, self.board.check_square(current_square), pieces, current_piece);
+                self.draw_piece(
+                    x,
+                    y,
+                    file as usize,
+                    rank as usize,
+                    d,
+                    self.board.check_square(current_square),
+                    pieces,
+                    current_piece,
+                );
             }
         }
     }
 
-    fn draw_piece(&self, x: i32, y: i32, file: usize, rank: usize, d: &mut RaylibDrawHandle, piece: Option<(board::Side, board::Piece)>, pieces: &mut Vec<PieceInfo>, current_piece: &Option<PieceInfo>) {
+    fn draw_piece(
+        &self,
+        x: i32,
+        y: i32,
+        file: usize,
+        rank: usize,
+        d: &mut RaylibDrawHandle,
+        piece: Option<(Side, Piece)>,
+        pieces: &mut Vec<PieceInfo>,
+        current_piece: &Option<PieceInfo>,
+    ) {
         if piece.is_none() {
             return;
         }
@@ -209,22 +293,37 @@ impl UI {
         }
         self.draw_piece_graphics(x, y, d, side, color, piece);
         if side == self.board.side_to_move() {
-            pieces.push(PieceInfo { x, y, file, rank, side, kind: piece });
+            pieces.push(PieceInfo {
+                x,
+                y,
+                file,
+                rank,
+                side,
+                kind: piece,
+            });
         }
     }
 
-    fn get_texture(&self, side: board::Side, piece: board::Piece) -> &Option<Texture2D> {
+    fn get_texture(&self, side: Side, piece: Piece) -> &Option<Texture2D> {
         match piece {
-            board::Piece::King => &self.t_king[side],
-            board::Piece::Queen => &self.t_queen[side],
-            board::Piece::Rook => &self.t_rook[side],
-            board::Piece::Bishop => &self.t_bishop[side],
-            board::Piece::Knight => &self.t_knight[side],
-            board::Piece::Pawn => &self.t_pawn[side],
+            Piece::King => &self.t_king[side],
+            Piece::Queen => &self.t_queen[side],
+            Piece::Rook => &self.t_rook[side],
+            Piece::Bishop => &self.t_bishop[side],
+            Piece::Knight => &self.t_knight[side],
+            Piece::Pawn => &self.t_pawn[side],
         }
     }
 
-    fn draw_piece_graphics(&self, x: i32, y: i32, d: &mut RaylibDrawHandle, side: board::Side, color: Color, piece: board::Piece) {
+    fn draw_piece_graphics(
+        &self,
+        x: i32,
+        y: i32,
+        d: &mut RaylibDrawHandle,
+        side: Side,
+        color: Color,
+        piece: Piece,
+    ) {
         d.draw_texture(self.get_texture(side, piece).as_ref().unwrap(), x, y, color);
     }
 }
