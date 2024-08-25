@@ -15,7 +15,10 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Modes {
+    /// Universal Chess Interface mode
     UCI,
+
+    /// Graphical UI, requires "ui" feature (default)
     UI,
 }
 
