@@ -4,6 +4,7 @@ mod chess;
 
 #[cfg(feature = "ui")]
 mod ui;
+mod uci;
 
 #[derive(Parser, Debug)]
 #[command(name = "kopyto")]
@@ -34,13 +35,15 @@ fn run_ui() {
     std::process::exit(1);
 }
 
+fn run_uci() {
+    let mut uci = uci::UCI::new();
+    uci.run();
+}
+
 fn main() {
     let args = Args::parse();
     match args.mode {
         Some(Modes::UI) | None => run_ui(),
-        Some(Modes::UCI) => {
-            eprintln!("Not implemented");
-            std::process::exit(1);
-        }
+        Some(Modes::UCI) => run_uci(),
     }
 }

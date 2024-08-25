@@ -82,6 +82,20 @@ impl Move {
         m
     }
 
+    pub fn from_uci(uci: &str) -> Self {
+        match uci.len() {
+            4 => Self::from_str(&uci[0..2], &uci[2..4]),
+            5 => Self::from_str_prom(&uci[0..2], &uci[2..4], match &uci[4..5] {
+                "q" => Promotion::Queen,
+                "r" => Promotion::Rook,
+                "b" => Promotion::Bishop,
+                "n" => Promotion::Knight,
+                _ => panic!("invalid uci move: {} (bad promotion)", uci),
+            }),
+            _ => panic!("invalid uci move: {}", uci),
+        }
+    }
+
     pub fn from_idx(from: usize, to: usize) -> Self {
         let mut m = Self::new();
         m.set_from(from);
