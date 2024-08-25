@@ -47,12 +47,12 @@ impl History {
 }
 
 pub struct Board {
-    kings: ColorBitboard,
-    queens: ColorBitboard,
-    rooks: ColorBitboard,
-    bishops: ColorBitboard,
-    knights: ColorBitboard,
-    pawns: ColorBitboard,
+    pub(super) kings: ColorBitboard,
+    pub(super) queens: ColorBitboard,
+    pub(super) rooks: ColorBitboard,
+    pub(super) bishops: ColorBitboard,
+    pub(super) knights: ColorBitboard,
+    pub(super) pawns: ColorBitboard,
 
     pub(super) occupied: ColorBitboard,
     any_piece: Bitboard,
