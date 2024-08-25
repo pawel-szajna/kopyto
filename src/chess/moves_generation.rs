@@ -187,13 +187,10 @@ mod pimpl {
             let file = idx % 8;
             let rank = idx / 8;
 
-            let rank_guard = masks::RANKS[rank] & !(masks::FILES[0] | masks::FILES[7]);
-            let file_guard = masks::FILES[file] & !(masks::RANKS[0] | masks::RANKS[7]);
-
             collect_sliders(
                 mask,
                 -1,
-                rank_guard,
+                masks::RANKS[rank] & !masks::FILES[0],
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -201,7 +198,7 @@ mod pimpl {
             collect_sliders(
                 mask,
                 1,
-                rank_guard,
+                masks::RANKS[rank] & !masks::FILES[7],
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -209,7 +206,7 @@ mod pimpl {
             collect_sliders(
                 mask,
                 8,
-                file_guard,
+                masks::FILES[file] & !masks::RANKS[7],
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -217,7 +214,7 @@ mod pimpl {
             collect_sliders(
                 mask,
                 -8,
-                file_guard,
+                masks::FILES[file] & !masks::RANKS[0],
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -234,12 +231,10 @@ mod pimpl {
 
             let mut attacked_squares = 0u64;
 
-            let guard = !(masks::RANKS[0] | masks::RANKS[7] | masks::FILES[0] | masks::FILES[7]);
-
             collect_sliders(
                 mask,
                 -7,
-                guard,
+                !(masks::RANKS[0] | masks::FILES[7]),
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -247,7 +242,7 @@ mod pimpl {
             collect_sliders(
                 mask,
                 -9,
-                guard,
+                !(masks::RANKS[0] | masks::FILES[0]),
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -255,7 +250,7 @@ mod pimpl {
             collect_sliders(
                 mask,
                 7,
-                guard,
+                !(masks::RANKS[7] | masks::FILES[0]),
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
@@ -263,7 +258,7 @@ mod pimpl {
             collect_sliders(
                 mask,
                 9,
-                guard,
+                !(masks::RANKS[7] | masks::FILES[7]),
                 self.occupied[side],
                 self.occupied[opponent],
                 &mut attacked_squares,
