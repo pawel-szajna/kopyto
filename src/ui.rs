@@ -258,7 +258,7 @@ impl UI {
     }
 
     fn draw_board(
-        &self,
+        &mut self,
         d: &mut RaylibDrawHandle,
         pieces: &mut Vec<PieceInfo>,
         current_piece: &Option<PieceInfo>,
@@ -300,7 +300,7 @@ impl UI {
     }
 
     fn draw_piece(
-        &self,
+        &mut self,
         x: i32,
         y: i32,
         file: usize,
@@ -318,6 +318,10 @@ impl UI {
         let mut color = Color::WHITE;
         if current_piece.is_some_and(|piece| piece.file == file && piece.rank == rank) {
             color.a = 64;
+        }
+        if piece == Piece::King && self.board.in_check(side) {
+            color.g = 128;
+            color.b = 128;
         }
         self.draw_piece_graphics(x, y, d, side, color, piece);
         if side == self.board.side_to_move() {

@@ -1,6 +1,6 @@
-use super::moves_generation::MoveGenerator;
 use super::masks;
 use super::moves::*;
+use super::moves_generation::MoveGenerator;
 use super::util::*;
 
 pub type Side = usize;
@@ -20,6 +20,7 @@ struct History {
     half_moves: u32,
     promotion: bool,
     en_passant: Option<u64>,
+    attacks: [Option<u64>; 2],
 }
 
 impl History {
@@ -40,6 +41,7 @@ impl History {
             half_moves,
             promotion: false,
             en_passant,
+            attacks: [None, None],
         }
     }
 }
@@ -67,6 +69,8 @@ pub struct Board {
 
     en_passant: Option<u64>,
     check: [Option<bool>; 2],
+    pub(super) attacks: [Option<u64>; 2],
+    pub(super) moves: [Option<Vec<Move>>; 2],
 }
 
 impl Board {
@@ -94,6 +98,8 @@ impl Board {
 
             en_passant: None,
             check: [None, None],
+            attacks: [None, None],
+            moves: [None, None],
         }
     }
 
@@ -458,13 +464,25 @@ impl Board {
         Some((BLACK, self.check_piece(BLACK, mask).unwrap()))
     }
 
+    pub fn get_attacks(&mut self, side: Side) -> u64 {
+        match self.attacks[side] {
+            Some(value) => value,
+            None => {
+                self.attacks[side] = Some(0);
+                let (moves, attacks) = self.generate_side_moves(side);
+                self.moves[side] = Some(moves);
+                self.attacks[side] = Some(attacks);
+                self.attacks[side].unwrap()
+            }
+        }
+    }
+
     pub fn in_check(&mut self, side: Side) -> bool {
         match self.check[side] {
             Some(value) => value,
             None => {
                 let opponent = if side == WHITE { BLACK } else { WHITE };
-                let (_, attacked) = self.generate_side_moves(opponent);
-                self.check[side] = Some(self.kings[side] & attacked != 0);
+                self.check[side] = Some(self.kings[side] & self.get_attacks(opponent) != 0);
                 self.check[side].unwrap()
             }
         }
@@ -516,21 +534,27 @@ impl Board {
         self.make_move(Move::from_str(from, to));
     }
 
-    pub fn can_castle_kingside(&self, side: Side) -> bool {
-        // TODO moving through attack
+    pub fn can_castle_kingside(&mut self, side: Side) -> bool {
+        let attacks = self.get_attacks(if side == WHITE { BLACK } else { WHITE });
         self.castle_kingside[side]
             && !self.has_piece(masks::CASTLE_KINGSIDE[side])
             && !self.has_piece(masks::CASTLE_KINGSIDE_BLOCKER[side])
             && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
+            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_KINGSIDE_BLOCKER[side])
+                & attacks
+                == 0
     }
 
-    pub fn can_castle_queenside(&self, side: Side) -> bool {
-        // TODO moving through attack
+    pub fn can_castle_queenside(&mut self, side: Side) -> bool {
+        let attacks = self.get_attacks(if side == WHITE { BLACK } else { WHITE });
         self.castle_queenside[side]
             && !self.has_piece(masks::CASTLE_QUEENSIDE[side])
             && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
             && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
             && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
+                & attacks
+                == 0
     }
 
     pub fn make_move(&mut self, m: Move) {
@@ -619,8 +643,12 @@ impl Board {
             self.full_moves_count += 1;
         }
 
+        history_entry.attacks = self.attacks;
+
         self.history.push(history_entry);
         self.check = [None, None];
+        self.attacks = [None, None];
+        self.moves = [None, None];
     }
 
     pub fn unmake_move(&mut self) {
@@ -683,6 +711,8 @@ impl Board {
             self.full_moves_count -= 1;
         }
         self.check = [None, None];
+        self.attacks = last_move.attacks;
+        self.moves = [None, None];
     }
 
     pub fn last_move(&self) -> Option<(u64, u64)> {
