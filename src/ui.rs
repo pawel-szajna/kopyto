@@ -19,6 +19,7 @@ pub struct UI {
     t_knight: TexturePerColor,
 
     legal_moves: Vec<Move>,
+    attack_mask: Option<u64>,
 
     evaluation: i64,
     side_cpu: Side,
@@ -35,6 +36,10 @@ const SQUARE_LAST_MOVE: [Color; 2] = [
 const SQUARE_LEGAL: [Color; 2] = [
     Color::new(158, 143, 188, 255),
     Color::new(207, 188, 214, 255),
+];
+const SQUARE_ATTACKED: [Color; 2] = [
+    Color::new(212, 106, 194, 255),
+    Color::new(224, 137, 210, 255),
 ];
 const PROMOTION_BACKGROUND: Color = Color::new(255, 255, 255, 192);
 
@@ -61,6 +66,7 @@ impl UI {
             t_knight: NO_TEXTURE,
 
             legal_moves: Vec::new(),
+            attack_mask: None,
 
             evaluation: 0,
             side_cpu: board::BLACK,
@@ -107,7 +113,8 @@ impl UI {
 
             let btn_x = 800 - 108;
             let btn_y = 600 - 32;
-            let mouse_on_button = mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
+            let mouse_on_button =
+                mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
 
             if self.board.side_to_move() == self.side_cpu {
                 let result = self.board.search(search::Options::new());
@@ -128,7 +135,17 @@ impl UI {
                     Color::WHITE,
                 );
 
-                d.draw_rectangle(btn_x, btn_y, 64, 16, if mouse_on_button { Color::BLACK } else { Color::DIMGRAY });
+                d.draw_rectangle(
+                    btn_x,
+                    btn_y,
+                    64,
+                    16,
+                    if mouse_on_button {
+                        Color::BLACK
+                    } else {
+                        Color::DIMGRAY
+                    },
+                );
                 d.draw_rectangle_lines(btn_x, btn_y, 64, 16, Color::GRAY);
                 d.draw_text("UNDO", btn_x + 12, btn_y, 16, Color::WHITE);
 
@@ -158,6 +175,26 @@ impl UI {
                 self.board.unmake_move();
             }
 
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) {
+                if self.attack_mask.is_none() {
+                    for piece in &pieces {
+                        if mouse_x > piece.x
+                            && mouse_x < piece.x + 60
+                            && mouse_y > piece.y
+                            && mouse_y < piece.y + 60
+                        {
+                            let moves = self
+                                .board
+                                .generate_side_moves_for(piece.side, piece.file, piece.rank);
+                            self.attack_mask = Some(moves.1);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                self.attack_mask = None;
+            }
+
             if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
             {
                 for piece in &pieces {
@@ -168,7 +205,8 @@ impl UI {
                     {
                         current_piece = Some(piece.clone());
                         let mut moves = self.board.generate_moves_for(piece.file, piece.rank);
-                        self.board.prune_checks(self.board.side_to_move(), &mut moves);
+                        self.board
+                            .prune_checks(self.board.side_to_move(), &mut moves);
                         self.legal_moves = moves.0;
                         break;
                     }
@@ -282,6 +320,11 @@ impl UI {
                 {
                     color = SQUARE_LEGAL[square_shade];
                 }
+                if self.attack_mask.is_some_and(|mask| {
+                    mask & util::coords_to_mask(file as usize, rank as usize) != 0
+                }) {
+                    color = SQUARE_ATTACKED[square_shade];
+                }
                 let x = 160 + file * 60;
                 let y = 60 + (7 - rank) * 60;
                 d.draw_rectangle(x, y, 60, 60, color);
@@ -324,16 +367,14 @@ impl UI {
             color.b = 128;
         }
         self.draw_piece_graphics(x, y, d, side, color, piece);
-        if side == self.board.side_to_move() {
-            pieces.push(PieceInfo {
-                x,
-                y,
-                file,
-                rank,
-                side,
-                kind: piece,
-            });
-        }
+        pieces.push(PieceInfo {
+            x,
+            y,
+            file,
+            rank,
+            side,
+            kind: piece,
+        });
     }
 
     fn get_texture(&self, side: Side, piece: Piece) -> &Option<Texture2D> {

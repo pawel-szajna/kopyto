@@ -113,7 +113,10 @@ mod pimpl {
     impl MoveGenerator for Board {
         fn generate_moves_impl(&mut self, side: Side) -> Moves {
             if self.moves[side].is_some() && self.attacks[side].is_some() {
-                return (self.moves[side].clone().unwrap(), self.attacks[side].unwrap());
+                return (
+                    self.moves[side].clone().unwrap(),
+                    self.attacks[side].unwrap(),
+                );
             }
             let mut result = vec![];
             let mut all_pieces = self.occupied[side];
@@ -163,19 +166,20 @@ mod pimpl {
             let piece_to_left = if side == WHITE { mask << 7 } else { mask >> 9 };
             let piece_to_right = if side == WHITE { mask << 9 } else { mask >> 7 };
             let opponent = if side == WHITE { BLACK } else { WHITE };
-            attacks |= piece_to_left;
-            attacks |= piece_to_right;
 
-            if masks::FILES[0] & mask == 0
-                && (self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left))
-            {
-                moves.push(Move::from_mask(mask, piece_to_left));
+            if masks::FILES[0] & mask == 0 {
+                attacks |= piece_to_left;
+                if self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left) {
+                    moves.push(Move::from_mask(mask, piece_to_left));
+                }
             }
-            if masks::FILES[7] & mask == 0
-                && (self.has_side_piece(opponent, piece_to_right)
-                    || self.en_passant(piece_to_right))
-            {
-                moves.push(Move::from_mask(mask, piece_to_right));
+
+            if masks::FILES[7] & mask == 0 {
+                attacks |= piece_to_right;
+                if self.has_side_piece(opponent, piece_to_right) || self.en_passant(piece_to_right)
+                {
+                    moves.push(Move::from_mask(mask, piece_to_right));
+                }
             }
 
             if masks::RANKS_RELATIVE[6][side] & mask != 0 {
@@ -465,7 +469,11 @@ mod tests {
         }
 
         fn perft_pos5(depth: usize, expected: u64) {
-            perft_run("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", depth, expected);
+            perft_run(
+                "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+                depth,
+                expected,
+            );
         }
 
         #[test]
@@ -801,6 +809,16 @@ mod tests {
                 7,
                 vec![a_move!("e8", "d8")],
             )
+        }
+
+        #[test]
+        fn check_evasion() {
+            piece_move_generation_test(
+                "rn2k1nr/ppp3pp/8/2P2pK1/P6P/4b1p1/4P3/1N3q2 w kq - 3 21",
+                6,
+                4,
+                vec![a_move!("g5", "h5")],
+            );
         }
     }
 }
