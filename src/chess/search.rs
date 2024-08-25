@@ -46,10 +46,10 @@ pub trait Search: pimpl::SearchImpl {
 impl Search for Board {}
 
 mod pimpl {
-    use rand::prelude::SliceRandom;
     use super::*;
-    use crate::chess::moves_generation::MoveGenerator;
     use crate::chess::board::{BLACK, WHITE};
+    use crate::chess::moves_generation::MoveGenerator;
+    use rand::prelude::SliceRandom;
 
     const NULL_MOVE: Move = Move::new();
 
@@ -82,7 +82,12 @@ mod pimpl {
                 score += modifier * (self.bishops[side].count_ones() * 320) as i64;
                 score += modifier * (self.rooks[side].count_ones() * 500) as i64;
                 score += modifier * (self.queens[side].count_ones() * 900) as i64;
-                score += modifier * (if self.in_checkmate(opponent) { 100000 } else { 0 });
+                score += modifier
+                    * (if self.in_checkmate(opponent) {
+                        100000
+                    } else {
+                        0
+                    });
             }
 
             score
@@ -90,12 +95,26 @@ mod pimpl {
 
         fn negamax(&mut self, depth: usize) -> (Move, i64) {
             if depth == 0 {
-                return (NULL_MOVE, self.eval() * if self.side_to_move() == WHITE { 1 } else { -1 });
+                return (
+                    NULL_MOVE,
+                    self.eval() * if self.side_to_move() == WHITE { 1 } else { -1 },
+                );
             }
 
             let mut moves = self.generate_moves();
             self.prune_checks(self.side_to_move(), &mut moves);
             let (mut moves, _) = moves;
+
+            if moves.is_empty() {
+                return (
+                    NULL_MOVE,
+                    if self.in_check(self.side_to_move()) {
+                        self.eval() * if self.side_to_move() == WHITE { 1 } else { -1 }
+                    } else {
+                        0
+                    },
+                );
+            }
 
             let mut best = NULL_MOVE;
             let mut best_eval = i64::MIN + 1;

@@ -1,8 +1,8 @@
 use crate::chess::board::Board;
 use crate::chess::moves::Move;
+use crate::chess::moves_generation::perft;
 use crate::chess::search;
 use crate::chess::search::Search;
-use crate::chess::moves_generation::perft;
 use std::io::BufRead;
 
 pub struct UCI {
@@ -76,23 +76,26 @@ impl UCI {
                     if cmd.starts_with("startpos moves ") {
                         self.position_moves(cmd.strip_prefix("startpos moves "));
                     }
-                },
+                }
                 cmd if cmd.starts_with("fen ") => {
                     let moves = cmd.find(" moves ");
-                    let fen = if moves.is_some() { &cmd[4..moves.unwrap()] } else { &cmd[4..] };
+                    let fen = if moves.is_some() {
+                        &cmd[4..moves.unwrap()]
+                    } else {
+                        &cmd[4..]
+                    };
                     self.board = Board::from_fen(fen);
                     if moves.is_some() {
                         let moves_str = &cmd[(moves.unwrap() + 7)..];
                         self.position_moves(Some(moves_str));
                     }
-                },
+                }
                 _ => println!("info string unknown position format"),
-            }
+            },
         }
     }
 
-    fn parse_go_options(&self, options: &mut search::Options, cmd: Option<&str>) {
-    }
+    fn parse_go_options(&self, options: &mut search::Options, cmd: Option<&str>) {}
 
     fn go(&mut self, cmd: Option<&str>) {
         if cmd.is_some_and(|cmd| cmd.starts_with("perft")) {
@@ -111,7 +114,15 @@ impl UCI {
         self.parse_go_options(&mut options, cmd);
         let result = self.board.search(options);
 
-        println!("info depth {} score cp {}", result.depth, result.score);
+        println!(
+            "info depth {} score {}",
+            result.depth,
+            if result.score.abs() == i64::MAX {
+                String::from("mate 1")
+            } else {
+                format!("cp {}", result.score)
+            }
+        );
         println!("bestmove {}", result.m.to_uci());
     }
 }

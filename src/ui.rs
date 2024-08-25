@@ -120,8 +120,12 @@ impl UI {
                 && !self.board.in_checkmate(self.side_cpu)
             {
                 let result = self.board.search(search::Options::new());
-                eprintln!("Playing move {:?} eval {:.2}", result.m, (result.score as f64) / 100.0);
-                self.board.make_move(result.m);
+                if result.m.get_to() == result.m.get_from() && result.m.get_to() == 0u16 {
+                    eprintln!("Tried making a null move with eval {}", result.score);
+                } else {
+                    eprintln!("Playing move {:?} eval {}", result.m, result.score);
+                    self.board.make_move(result.m);
+                }
                 self.evaluation = result.score;
             }
 
