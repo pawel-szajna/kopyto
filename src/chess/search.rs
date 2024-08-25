@@ -56,8 +56,9 @@ mod pimpl {
 
     impl SearchImpl for Board {
         fn search_impl(&mut self, _: Options) -> SearchResult {
-            let (moves, _) = self.generate_moves();
-            let chosen = moves
+            let mut moves = self.generate_moves();
+            self.prune_checks(self.side_to_move(), &mut moves);
+            let chosen = moves.0
                 .choose(&mut thread_rng())
                 .cloned()
                 .unwrap_or(Move::from_idx(0, 0));

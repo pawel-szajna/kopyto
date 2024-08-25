@@ -154,8 +154,9 @@ impl UI {
                         && mouse_y < piece.y + 60
                     {
                         current_piece = Some(piece.clone());
-                        let (moves, _) = self.board.generate_moves_for(piece.file, piece.rank);
-                        self.legal_moves = moves;
+                        let mut moves = self.board.generate_moves_for(piece.file, piece.rank);
+                        self.board.prune_checks(self.board.side_to_move(), &mut moves);
+                        self.legal_moves = moves.0;
                         break;
                     }
                 }

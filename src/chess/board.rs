@@ -1,3 +1,4 @@
+use super::moves_generation::MoveGenerator;
 use super::masks;
 use super::moves::*;
 use super::util::*;
@@ -65,6 +66,7 @@ pub struct Board {
     full_moves_count: u32,
 
     en_passant: Option<u64>,
+    check: [Option<bool>; 2],
 }
 
 impl Board {
@@ -91,6 +93,7 @@ impl Board {
             full_moves_count: 1,
 
             en_passant: None,
+            check: [None, None],
         }
     }
 
@@ -455,7 +458,19 @@ impl Board {
         Some((BLACK, self.check_piece(BLACK, mask).unwrap()))
     }
 
-    fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
+    pub fn in_check(&mut self, side: Side) -> bool {
+        match self.check[side] {
+            Some(value) => value,
+            None => {
+                let opponent = if side == WHITE { BLACK } else { WHITE };
+                let (_, attacked) = self.generate_side_moves(opponent);
+                self.check[side] = Some(self.kings[side] & attacked != 0);
+                self.check[side].unwrap()
+            }
+        }
+    }
+
+    pub(super) fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
         if !self.has_piece(mask) || (self.occupied[side] & mask) == 0 {
             return None;
         }
@@ -605,6 +620,7 @@ impl Board {
         }
 
         self.history.push(history_entry);
+        self.check = [None, None];
     }
 
     pub fn unmake_move(&mut self) {
@@ -664,6 +680,7 @@ impl Board {
         if self.current_color == BLACK {
             self.full_moves_count -= 1;
         }
+        self.check = [None, None];
     }
 
     pub fn last_move(&self) -> Option<(u64, u64)> {

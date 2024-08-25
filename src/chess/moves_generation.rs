@@ -6,16 +6,37 @@ use super::util;
 pub type Moves = (Vec<Move>, u64);
 
 pub trait MoveGenerator: pimpl::MoveGenerator {
-    fn generate_moves(&self) -> Moves {
-        self.generate_moves_impl()
+    fn generate_moves(&self) -> Moves;
+    fn generate_moves_for(&self, file: usize, rank: usize) -> Moves;
+    fn prune_checks(&mut self, side: Side, moves: &mut Moves);
+
+    fn generate_side_moves(&self, side: Side) -> Moves {
+        self.generate_moves_impl(side)
     }
 
-    fn generate_moves_for(&self, file: usize, rank: usize) -> Moves {
-        self.generate_moves_for_impl(util::coords_to_mask(file, rank))
+    fn generate_side_moves_for(&self, side: Side, file: usize, rank: usize) -> Moves {
+        self.generate_moves_for_impl(side, util::coords_to_mask(file, rank))
     }
 }
 
-impl MoveGenerator for Board {}
+impl MoveGenerator for Board {
+    fn generate_moves(&self) -> Moves {
+        self.generate_side_moves(self.side_to_move())
+    }
+
+    fn generate_moves_for(&self, file: usize, rank: usize) -> Moves {
+        self.generate_side_moves_for(self.side_to_move(), file, rank)
+    }
+
+    fn prune_checks(&mut self, side: Side, moves: &mut Moves) {
+        moves.0.retain(|m| {
+            self.make_move(m.clone());
+            let retain = !self.in_check(side);
+            self.unmake_move();
+            retain
+        });
+    }
+}
 
 mod pimpl {
     use super::*;
@@ -53,8 +74,8 @@ mod pimpl {
     }
 
     pub trait MoveGenerator {
-        fn generate_moves_impl(&self) -> Moves;
-        fn generate_moves_for_impl(&self, mask: u64) -> Moves;
+        fn generate_moves_impl(&self, side: Side) -> Moves;
+        fn generate_moves_for_impl(&self, side: Side, mask: u64) -> Moves;
 
         fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Moves;
 
@@ -67,13 +88,13 @@ mod pimpl {
     }
 
     impl MoveGenerator for Board {
-        fn generate_moves_impl(&self) -> Moves {
+        fn generate_moves_impl(&self, side: Side) -> Moves {
             let mut result = vec![];
-            let mut all_pieces = self.occupied[self.side_to_move()];
+            let mut all_pieces = self.occupied[side];
             let mut all_attacks = 0u64;
             while all_pieces != 0 {
                 let extracted = 1u64 << all_pieces.trailing_zeros();
-                let (mut moves, attacks) = self.generate_moves_for_impl(extracted);
+                let (mut moves, attacks) = self.generate_moves_for_impl(side, extracted);
                 result.append(&mut moves);
                 all_attacks |= attacks;
                 all_pieces ^= extracted;
@@ -81,10 +102,10 @@ mod pimpl {
             (result, all_attacks)
         }
 
-        fn generate_moves_for_impl(&self, mask: u64) -> Moves {
-            match self.check_square(mask) {
+        fn generate_moves_for_impl(&self, side: Side, mask: u64) -> Moves {
+            match self.check_piece(side, mask) {
                 None => (vec![], 0u64),
-                Some((side, piece)) => match piece {
+                Some(piece) => match piece {
                     Piece::Pawn => self.generate_pawn_moves(side, mask),
                     Piece::Knight => self.generate_knight_moves(side, mask),
                     Piece::King => self.generate_king_moves(side, mask),
@@ -301,9 +322,12 @@ mod tests {
     }
 
     fn piece_move_generation_test(fen: &str, file: usize, rank: usize, mut expected: Vec<Move>) {
-        let board = Board::from_fen(fen);
+        let mut board = Board::from_fen(fen);
 
-        let (mut generated, _) = board.generate_moves_for(file, rank);
+        let mut moves = board.generate_moves_for(file, rank);
+        board.prune_checks(board.side_to_move(), &mut moves);
+
+        let mut generated = moves.0;
 
         generated.sort_unstable();
         expected.sort_unstable();
@@ -322,12 +346,15 @@ mod tests {
 
             let (moves, _) = board.generate_moves();
             for m in &moves {
+                let side = board.side_to_move();
                 board.make_move(m.clone());
-                let res = perft(board, depth - 1, false);
-                if init {
-                    println!("{:?}: {}", m, res);
+                if !board.in_check(side) {
+                    let res = perft(board, depth - 1, false);
+                    if init {
+                        println!("{:?}: {}", m, res);
+                    }
+                    nodes += res;
                 }
-                nodes += res;
                 board.unmake_move();
             }
 
