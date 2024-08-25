@@ -12,6 +12,7 @@ pub struct Options {
     pub black_time: u64,
     pub white_increment: u64,
     pub black_increment: u64,
+    pub depth: Option<usize>,
 }
 
 impl Options {
@@ -21,6 +22,7 @@ impl Options {
             black_time: u64::MAX,
             white_increment: 0,
             black_increment: 0,
+            depth: Some(4),
         }
     }
 }
@@ -62,9 +64,9 @@ mod pimpl {
     }
 
     impl SearchImpl for Board {
-        fn search_impl(&mut self, _: Options) -> SearchResult {
-            let (m, eval) = self.negamax(3);
-            result!(m, -eval, 3)
+        fn search_impl(&mut self, options: Options) -> SearchResult {
+            let (m, eval) = self.negamax(options.depth.unwrap_or(usize::MAX));
+            result!(m, -eval, options.depth.unwrap_or(usize::MAX) as u64)
         }
 
         fn order_moves(&self, moves: &mut Vec<Move>) {

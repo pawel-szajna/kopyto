@@ -95,7 +95,24 @@ impl UCI {
         }
     }
 
-    fn parse_go_options(&self, options: &mut search::Options, cmd: Option<&str>) {}
+    fn parse_go_options(&self, options: &mut search::Options, cmd: Option<&str>) {
+        if cmd.is_none() {
+            return;
+        }
+        let mut cmd = cmd.unwrap();
+        if cmd.starts_with("infinite") {
+            options.depth = None;
+            cmd = (&cmd[8..]).trim();
+        }
+        if cmd.starts_with("depth") {
+            cmd = (&cmd[5..]).trim();
+            let depth = cmd.to_string().parse::<usize>();
+            match depth {
+                Err(what) => panic!("cannot parse: {}", what.to_string()),
+                Ok(depth) => options.depth = Some(depth),
+            }
+        }
+    }
 
     fn go(&mut self, cmd: Option<&str>) {
         if cmd.is_some_and(|cmd| cmd.starts_with("perft")) {
