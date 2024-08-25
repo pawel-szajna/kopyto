@@ -1,6 +1,7 @@
 use crate::chess::board::Side;
 use crate::chess::moves::{Move, Piece, Promotion};
 use crate::chess::moves_generation::MoveGenerator;
+use crate::chess::search::Search;
 use crate::chess::{board, util};
 use raylib::prelude::*;
 
@@ -18,6 +19,9 @@ pub struct UI {
     t_knight: TexturePerColor,
 
     legal_moves: Vec<Move>,
+
+    evaluation: i64,
+    side_cpu: Side,
 }
 
 const SQUARE: [Color; 2] = [
@@ -40,7 +44,7 @@ struct PieceInfo {
     y: i32,
     file: usize,
     rank: usize,
-    side: board::Side,
+    side: Side,
     kind: Piece,
 }
 
@@ -57,6 +61,9 @@ impl UI {
             t_knight: NO_TEXTURE,
 
             legal_moves: Vec::new(),
+
+            evaluation: 0,
+            side_cpu: board::BLACK,
         }
     }
 
@@ -97,6 +104,12 @@ impl UI {
             pieces.clear();
             let mouse_x = rl.get_mouse_x();
             let mouse_y = rl.get_mouse_y();
+
+            if self.board.side_to_move() == self.side_cpu {
+                let result = self.board.search();
+                self.board.make_move(result.m);
+                self.evaluation = result.score;
+            }
 
             {
                 let mut d = rl.begin_drawing(&thread);
