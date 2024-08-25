@@ -163,19 +163,19 @@ mod pimpl {
             let piece_to_left = if side == WHITE { mask << 7 } else { mask >> 9 };
             let piece_to_right = if side == WHITE { mask << 9 } else { mask >> 7 };
             let opponent = if side == WHITE { BLACK } else { WHITE };
+            attacks |= piece_to_left;
+            attacks |= piece_to_right;
 
             if masks::FILES[0] & mask == 0
                 && (self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left))
             {
                 moves.push(Move::from_mask(mask, piece_to_left));
-                attacks |= piece_to_left;
             }
             if masks::FILES[7] & mask == 0
                 && (self.has_side_piece(opponent, piece_to_right)
                     || self.en_passant(piece_to_right))
             {
                 moves.push(Move::from_mask(mask, piece_to_right));
-                attacks |= piece_to_right;
             }
 
             if masks::RANKS_RELATIVE[6][side] & mask != 0 {
@@ -462,6 +462,30 @@ mod tests {
         #[test]
         fn perft_endgame_5() {
             perft_endgame(5, 674624);
+        }
+
+        fn perft_pos5(depth: usize, expected: u64) {
+            perft_run("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", depth, expected);
+        }
+
+        #[test]
+        fn perft_pos5_1() {
+            perft_pos5(1, 44);
+        }
+
+        #[test]
+        fn perft_pos5_2() {
+            perft_pos5(2, 1486);
+        }
+
+        #[test]
+        fn perft_pos5_3() {
+            perft_pos5(3, 62379);
+        }
+
+        #[test]
+        fn perft_pos5_4() {
+            perft_pos5(4, 2103487);
         }
     }
 
