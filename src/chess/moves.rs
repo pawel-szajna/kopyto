@@ -65,7 +65,7 @@ impl Move {
     const MASK_PROMOTION: u16 = 0b11000000000000;
     const MASK_HAS_PROMOTION: u16 = 0b100000000000000;
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { m: 0 }
     }
 

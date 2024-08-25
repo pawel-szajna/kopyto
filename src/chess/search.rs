@@ -51,37 +51,20 @@ mod pimpl {
     use crate::chess::moves_generation::MoveGenerator;
     use crate::chess::board::{BLACK, WHITE};
 
+    const NULL_MOVE: Move = Move::new();
+
     pub trait SearchImpl {
         fn search_impl(&mut self, options: Options) -> SearchResult;
 
         fn order_moves(&self, moves: &mut Vec<Move>);
-        fn eval(&mut self, m: Move) -> i64;
+        fn eval(&mut self) -> i64;
+        fn negamax(&mut self, depth: usize) -> (Move, i64);
     }
 
     impl SearchImpl for Board {
         fn search_impl(&mut self, _: Options) -> SearchResult {
-            let side = self.side_to_move();
-
-            let mut moves = self.generate_moves();
-            self.prune_checks(side, &mut moves);
-            let (mut moves, _) = moves;
-
-            let modifier = if side == WHITE { 1i64 } else { -1i64 };
-
-            let mut best = Move::new();
-            let mut best_eval = i64::MIN;
-
-            self.order_moves(&mut moves);
-
-            for m in moves {
-                let eval = modifier * self.eval(m.clone());
-                if eval > best_eval {
-                    best = m.clone();
-                    best_eval = eval;
-                }
-            }
-
-            result!(best.clone(), modifier * best_eval, 1)
+            let (m, eval) = self.negamax(3);
+            result!(m, -eval, 3)
         }
 
         fn order_moves(&self, moves: &mut Vec<Move>) {
@@ -89,9 +72,8 @@ mod pimpl {
             moves.shuffle(&mut rng);
         }
 
-        fn eval(&mut self, m: Move) -> i64 {
+        fn eval(&mut self) -> i64 {
             let mut score = 0i64;
-            self.make_move(m);
 
             for (side, modifier) in [(WHITE, 1i64), (BLACK, -1i64)] {
                 let opponent = if side == WHITE { BLACK } else { WHITE };
@@ -103,9 +85,35 @@ mod pimpl {
                 score += modifier * (if self.in_checkmate(opponent) { 100000 } else { 0 });
             }
 
-            self.unmake_move();
-
             score
+        }
+
+        fn negamax(&mut self, depth: usize) -> (Move, i64) {
+            if depth == 0 {
+                return (NULL_MOVE, self.eval() * if self.side_to_move() == WHITE { 1 } else { -1 });
+            }
+
+            let mut moves = self.generate_moves();
+            self.prune_checks(self.side_to_move(), &mut moves);
+            let (mut moves, _) = moves;
+
+            let mut best = NULL_MOVE;
+            let mut best_eval = i64::MIN + 1;
+
+            self.order_moves(&mut moves);
+
+            for m in moves {
+                self.make_move(m.clone());
+                let (_, mut score) = self.negamax(depth - 1);
+                score = -score;
+                if score > best_eval {
+                    best = m;
+                    best_eval = score;
+                }
+                self.unmake_move();
+            }
+
+            (best, best_eval)
         }
     }
 }
