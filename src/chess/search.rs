@@ -78,28 +78,24 @@ mod pimpl {
             let mut score = 0i64;
 
             for (side, modifier) in [(WHITE, 1i64), (BLACK, -1i64)] {
-                let opponent = if side == WHITE { BLACK } else { WHITE };
                 score += modifier * (self.pawns[side].count_ones() * 100) as i64;
                 score += modifier * (self.knights[side].count_ones() * 300) as i64;
                 score += modifier * (self.bishops[side].count_ones() * 320) as i64;
                 score += modifier * (self.rooks[side].count_ones() * 500) as i64;
                 score += modifier * (self.queens[side].count_ones() * 900) as i64;
-                score += modifier
-                    * (if self.in_checkmate(opponent) {
-                        100000
-                    } else {
-                        0
-                    });
             }
 
             score
         }
 
         fn negamax(&mut self, depth: usize) -> (Move, i64) {
+            let side = self.side_to_move();
+            let multiplier = if side == WHITE { 1 } else { - 1 };
+
             if depth == 0 {
                 return (
                     NULL_MOVE,
-                    self.eval() * if self.side_to_move() == WHITE { 1 } else { -1 },
+                    self.eval() * multiplier,
                 );
             }
 
@@ -110,7 +106,7 @@ mod pimpl {
                 return (
                     NULL_MOVE,
                     if self.in_check(self.side_to_move()) {
-                        self.eval() * if self.side_to_move() == WHITE { 1 } else { -1 }
+                        (self.eval() - multiplier * 100000) * multiplier
                     } else {
                         0
                     },
