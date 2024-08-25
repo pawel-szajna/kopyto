@@ -116,10 +116,27 @@ impl UI {
             let mouse_on_button =
                 mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
 
-            if self.board.side_to_move() == self.side_cpu {
+            if self.board.side_to_move() == self.side_cpu
+                && !self.board.in_checkmate(self.side_cpu)
+            {
                 let result = self.board.search(search::Options::new());
+                eprintln!("Playing move {:?} eval {:.2}", result.m, (result.score as f64) / 100.0);
                 self.board.make_move(result.m);
                 self.evaluation = result.score;
+            }
+
+            if rl.is_key_pressed(KeyboardKey::KEY_W) {
+                eprintln!(
+                    "White is checkmated: {:?}",
+                    self.board.in_checkmate(board::WHITE)
+                );
+            }
+
+            if rl.is_key_pressed(KeyboardKey::KEY_B) {
+                eprintln!(
+                    "Black is checkmated: {:?}",
+                    self.board.in_checkmate(board::BLACK)
+                );
             }
 
             {

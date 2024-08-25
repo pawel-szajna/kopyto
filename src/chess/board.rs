@@ -488,6 +488,17 @@ impl Board {
         }
     }
 
+    pub fn in_checkmate(&mut self, side: Side) -> bool {
+        match self.in_check(side) {
+            false => false,
+            true => {
+                let mut moves = self.generate_side_moves(side);
+                self.prune_checks(side, &mut moves);
+                moves.0.is_empty()
+            },
+        }
+    }
+
     pub(super) fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
         if !self.has_piece(mask) || (self.occupied[side] & mask) == 0 {
             return None;

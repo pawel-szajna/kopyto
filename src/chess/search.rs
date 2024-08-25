@@ -46,6 +46,7 @@ pub trait Search: pimpl::SearchImpl {
 impl Search for Board {}
 
 mod pimpl {
+    use rand::prelude::SliceRandom;
     use super::*;
     use crate::chess::moves_generation::MoveGenerator;
     use crate::chess::board::{BLACK, WHITE};
@@ -53,6 +54,7 @@ mod pimpl {
     pub trait SearchImpl {
         fn search_impl(&mut self, options: Options) -> SearchResult;
 
+        fn order_moves(&self, moves: &mut Vec<Move>);
         fn eval(&mut self, m: Move) -> i64;
     }
 
@@ -62,13 +64,16 @@ mod pimpl {
 
             let mut moves = self.generate_moves();
             self.prune_checks(side, &mut moves);
+            let (mut moves, _) = moves;
 
             let modifier = if side == WHITE { 1i64 } else { -1i64 };
 
-            let mut best = moves.0[0].clone();
-            let mut best_eval = 0;
+            let mut best = Move::new();
+            let mut best_eval = i64::MIN;
 
-            for m in moves.0 {
+            self.order_moves(&mut moves);
+
+            for m in moves {
                 let eval = modifier * self.eval(m.clone());
                 if eval > best_eval {
                     best = m.clone();
@@ -77,6 +82,11 @@ mod pimpl {
             }
 
             result!(best.clone(), modifier * best_eval, 1)
+        }
+
+        fn order_moves(&self, moves: &mut Vec<Move>) {
+            let mut rng = rand::thread_rng();
+            moves.shuffle(&mut rng);
         }
 
         fn eval(&mut self, m: Move) -> i64 {
@@ -90,7 +100,7 @@ mod pimpl {
                 score += modifier * (self.bishops[side].count_ones() * 320) as i64;
                 score += modifier * (self.rooks[side].count_ones() * 500) as i64;
                 score += modifier * (self.queens[side].count_ones() * 900) as i64;
-                score += modifier * (if self.in_check(opponent) { 200} else { 0 });
+                score += modifier * (if self.in_checkmate(opponent) { 100000 } else { 0 });
             }
 
             self.unmake_move();
