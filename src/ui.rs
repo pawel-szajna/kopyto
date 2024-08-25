@@ -227,7 +227,7 @@ impl UI {
                         current_piece = Some(piece.clone());
                         let mut moves = self.board.generate_moves_for(piece.file, piece.rank);
                         self.board
-                            .prune_checks(self.board.side_to_move(), &mut moves);
+                            .prune_checks(self.board.side_to_move(), &mut moves.0);
                         self.legal_moves = moves.0;
                         break;
                     }

@@ -8,7 +8,7 @@ pub type Moves = (Vec<Move>, u64);
 pub trait MoveGenerator: pimpl::MoveGenerator {
     fn generate_moves(&mut self) -> Moves;
     fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves;
-    fn prune_checks(&mut self, side: Side, moves: &mut Moves);
+    fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>);
 
     fn generate_side_moves(&mut self, side: Side) -> Moves {
         self.generate_moves_impl(side)
@@ -30,8 +30,8 @@ impl MoveGenerator for Board {
         self.generate_side_moves_for(self.side_to_move(), file, rank)
     }
 
-    fn prune_checks(&mut self, side: Side, moves: &mut Moves) {
-        moves.0.retain(|m| {
+    fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>) {
+        moves.retain(|m| {
             self.make_move(m.clone());
             let retain = !self.in_check(side);
             self.unmake_move();
@@ -342,7 +342,7 @@ mod tests {
         let mut board = Board::from_fen(fen);
 
         let mut moves = board.generate_moves_for(file, rank);
-        board.prune_checks(board.side_to_move(), &mut moves);
+        board.prune_checks(board.side_to_move(), &mut moves.0);
 
         let mut generated = moves.0;
 

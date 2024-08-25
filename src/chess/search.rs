@@ -103,9 +103,8 @@ mod pimpl {
                 );
             }
 
-            let mut moves = self.generate_moves();
+            let (mut moves, _) = self.generate_moves();
             self.prune_checks(self.side_to_move(), &mut moves);
-            let (mut moves, _) = moves;
 
             if moves.is_empty() {
                 return (

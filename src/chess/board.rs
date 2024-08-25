@@ -492,10 +492,14 @@ impl Board {
         match self.in_check(side) {
             false => false,
             true => {
-                let mut moves = self.generate_side_moves(side);
+                let mut moves = if self.moves[side].is_none() {
+                    self.generate_side_moves(side).0
+                } else {
+                    self.moves[side].as_ref().unwrap().clone()
+                };
                 self.prune_checks(side, &mut moves);
-                moves.0.is_empty()
-            },
+                moves.is_empty()
+            }
         }
     }
 
