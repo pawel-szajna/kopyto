@@ -88,8 +88,8 @@ impl UCI {
     fn go(&mut self, cmd: Option<&str>) {
         let mut options = search::Options::new();
         self.parse_go_options(&mut options, cmd);
+        let result = self.board.search(options);
 
-        let result = self.board.search();
         println!("info depth {} score cp {}", result.depth, result.score);
         println!("bestmove {}", result.m.to_uci());
     }

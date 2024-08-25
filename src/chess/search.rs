@@ -38,8 +38,8 @@ macro_rules! result {
 }
 
 pub trait Search: pimpl::SearchImpl {
-    fn search(&mut self) -> SearchResult {
-        self.search_impl()
+    fn search(&mut self, options: Options) -> SearchResult {
+        self.search_impl(options)
     }
 }
 
@@ -51,11 +51,11 @@ mod pimpl {
     use rand::prelude::*;
 
     pub trait SearchImpl {
-        fn search_impl(&mut self) -> SearchResult;
+        fn search_impl(&mut self, options: Options) -> SearchResult;
     }
 
     impl SearchImpl for Board {
-        fn search_impl(&mut self) -> SearchResult {
+        fn search_impl(&mut self, _: Options) -> SearchResult {
             let moves = self.generate_moves();
             let chosen = moves
                 .choose(&mut thread_rng())
