@@ -4,6 +4,7 @@ use crate::chess::moves::Move;
 pub struct SearchResult {
     pub m: Move,
     pub score: i64,
+    pub depth: u64,
 }
 
 pub struct Options {
@@ -25,14 +26,14 @@ impl Options {
 }
 
 impl SearchResult {
-    pub fn new(m: Move, score: i64) -> Self {
-        Self { m, score }
+    pub fn new(m: Move, score: i64, depth: u64) -> Self {
+        Self { m, score, depth }
     }
 }
 
 macro_rules! result {
-    ($m:expr,$s:expr) => {
-        SearchResult::new($m, $s)
+    ($m:expr,$s:expr,$d:expr) => {
+        SearchResult::new($m, $s, $d)
     };
 }
 
@@ -60,7 +61,7 @@ mod pimpl {
                 .choose(&mut thread_rng())
                 .cloned()
                 .unwrap_or(Move::from_idx(0, 0));
-            result!(chosen, 0)
+            result!(chosen, 0, 1)
         }
     }
 }

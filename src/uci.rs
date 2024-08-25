@@ -90,7 +90,7 @@ impl UCI {
         self.parse_go_options(&mut options, cmd);
 
         let result = self.board.search();
-        eprintln!("Found move {:?}, eval {}", result.m, result.score);
+        println!("info depth {} score cp {}", result.depth, result.score);
         println!("bestmove {}", result.m.to_uci());
     }
 }
