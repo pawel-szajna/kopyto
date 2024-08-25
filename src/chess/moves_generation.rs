@@ -3,12 +3,14 @@ use super::masks;
 use super::moves::{Move, Piece, Promotion};
 use super::util;
 
+pub type Moves = (Vec<Move>, u64);
+
 pub trait MoveGenerator: pimpl::MoveGenerator {
-    fn generate_moves(&self) -> Vec<Move> {
+    fn generate_moves(&self) -> Moves {
         self.generate_moves_impl()
     }
 
-    fn generate_moves_for(&self, file: usize, rank: usize) -> Vec<Move> {
+    fn generate_moves_for(&self, file: usize, rank: usize) -> Moves {
         self.generate_moves_for_impl(util::coords_to_mask(file, rank))
     }
 }
@@ -51,34 +53,37 @@ mod pimpl {
     }
 
     pub trait MoveGenerator {
-        fn generate_moves_impl(&self) -> Vec<Move>;
-        fn generate_moves_for_impl(&self, mask: u64) -> Vec<Move>;
+        fn generate_moves_impl(&self) -> Moves;
+        fn generate_moves_for_impl(&self, mask: u64) -> Moves;
 
-        fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Vec<Move>;
+        fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Moves;
 
-        fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move>;
-        fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move>;
-        fn generate_king_moves(&self, side: Side, mask: u64) -> Vec<Move>;
-        fn generate_rook_moves(&self, side: Side, mask: u64) -> Vec<Move>;
-        fn generate_bishop_moves(&self, side: Side, mask: u64) -> Vec<Move>;
-        fn generate_queen_moves(&self, side: Side, mask: u64) -> Vec<Move>;
+        fn generate_pawn_moves(&self, side: Side, mask: u64) -> Moves;
+        fn generate_knight_moves(&self, side: Side, mask: u64) -> Moves;
+        fn generate_king_moves(&self, side: Side, mask: u64) -> Moves;
+        fn generate_rook_moves(&self, side: Side, mask: u64) -> Moves;
+        fn generate_bishop_moves(&self, side: Side, mask: u64) -> Moves;
+        fn generate_queen_moves(&self, side: Side, mask: u64) -> Moves;
     }
 
     impl MoveGenerator for Board {
-        fn generate_moves_impl(&self) -> Vec<Move> {
+        fn generate_moves_impl(&self) -> Moves {
             let mut result = vec![];
             let mut all_pieces = self.occupied[self.side_to_move()];
+            let mut all_attacks = 0u64;
             while all_pieces != 0 {
                 let extracted = 1u64 << all_pieces.trailing_zeros();
-                result.append(&mut self.generate_moves_for_impl(extracted));
+                let (mut moves, attacks) = self.generate_moves_for_impl(extracted);
+                result.append(&mut moves);
+                all_attacks |= attacks;
                 all_pieces ^= extracted;
             }
-            result
+            (result, all_attacks)
         }
 
-        fn generate_moves_for_impl(&self, mask: u64) -> Vec<Move> {
+        fn generate_moves_for_impl(&self, mask: u64) -> Moves {
             match self.check_square(mask) {
-                None => vec![],
+                None => (vec![], 0u64),
                 Some((side, piece)) => match piece {
                     Piece::Pawn => self.generate_pawn_moves(side, mask),
                     Piece::Knight => self.generate_knight_moves(side, mask),
@@ -90,15 +95,16 @@ mod pimpl {
             }
         }
 
-        fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Vec<Move> {
+        fn generate_mask_moves(&self, side: Side, mask: u64, targets: &[u64; 64]) -> Moves {
             let mut moves = vec![];
             let moves_mask = targets[mask.trailing_zeros() as usize] & !self.occupied[side];
             extract_mask_to_moves(mask, moves_mask, &mut moves);
-            moves
+            (moves, moves_mask)
         }
 
-        fn generate_pawn_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        fn generate_pawn_moves(&self, side: Side, mask: u64) -> Moves {
             let mut moves = vec![];
+            let mut attacks = 0u64;
 
             let basic_direction = if side == WHITE { mask << 8 } else { mask >> 8 };
             let blockade = self.has_piece(basic_direction);
@@ -115,12 +121,14 @@ mod pimpl {
                 && (self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left))
             {
                 moves.push(Move::from_mask(mask, piece_to_left));
+                attacks |= piece_to_left;
             }
             if masks::FILES[7] & mask == 0
                 && (self.has_side_piece(opponent, piece_to_right)
                     || self.en_passant(piece_to_right))
             {
                 moves.push(Move::from_mask(mask, piece_to_right));
+                attacks |= piece_to_right;
             }
 
             if masks::RANKS_RELATIVE[6][side] & mask != 0 {
@@ -157,15 +165,15 @@ mod pimpl {
                 moves.push(Move::from_mask(mask, double_move_target));
             }
 
-            moves
+            (moves, attacks)
         }
 
-        fn generate_knight_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        fn generate_knight_moves(&self, side: Side, mask: u64) -> Moves {
             self.generate_mask_moves(side, mask, &masks::KNIGHT_TARGETS)
         }
 
-        fn generate_king_moves(&self, side: Side, mask: u64) -> Vec<Move> {
-            let mut moves = self.generate_mask_moves(side, mask, &masks::KING_TARGETS);
+        fn generate_king_moves(&self, side: Side, mask: u64) -> Moves {
+            let (mut moves, attacks) = self.generate_mask_moves(side, mask, &masks::KING_TARGETS);
 
             if self.can_castle_kingside(side) {
                 moves.push(Move::from_mask(mask, masks::CASTLE_KINGSIDE[side]));
@@ -174,10 +182,10 @@ mod pimpl {
                 moves.push(Move::from_mask(mask, masks::CASTLE_QUEENSIDE[side]));
             }
 
-            moves
+            (moves, attacks)
         }
 
-        fn generate_rook_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        fn generate_rook_moves(&self, side: Side, mask: u64) -> Moves {
             let mut moves = vec![];
             let opponent = if side == WHITE { BLACK } else { WHITE };
 
@@ -222,10 +230,10 @@ mod pimpl {
 
             extract_mask_to_moves(mask, attacked_squares, &mut moves);
 
-            moves
+            (moves, attacked_squares)
         }
 
-        fn generate_bishop_moves(&self, side: Side, mask: u64) -> Vec<Move> {
+        fn generate_bishop_moves(&self, side: Side, mask: u64) -> Moves {
             let mut moves = vec![];
             let opponent = if side == WHITE { BLACK } else { WHITE };
 
@@ -266,13 +274,15 @@ mod pimpl {
 
             extract_mask_to_moves(mask, attacked_squares, &mut moves);
 
-            moves
+            (moves, attacked_squares)
         }
 
-        fn generate_queen_moves(&self, side: Side, mask: u64) -> Vec<Move> {
-            let mut moves = self.generate_rook_moves(side, mask);
-            moves.append(&mut self.generate_bishop_moves(side, mask));
-            moves
+        fn generate_queen_moves(&self, side: Side, mask: u64) -> Moves {
+            let (mut r_moves, mut r_attacks) = self.generate_rook_moves(side, mask);
+            let (mut b_moves, b_attacks) = self.generate_bishop_moves(side, mask);
+            r_moves.append(&mut b_moves);
+            r_attacks |= b_attacks;
+            (r_moves, r_attacks)
         }
     }
 }
@@ -293,7 +303,7 @@ mod tests {
     fn piece_move_generation_test(fen: &str, file: usize, rank: usize, mut expected: Vec<Move>) {
         let board = Board::from_fen(fen);
 
-        let mut generated = board.generate_moves_for(file, rank);
+        let (mut generated, _) = board.generate_moves_for(file, rank);
 
         generated.sort_unstable();
         expected.sort_unstable();
@@ -310,7 +320,7 @@ mod tests {
                 return 1;
             }
 
-            let moves = board.generate_moves();
+            let (moves, _) = board.generate_moves();
             for m in &moves {
                 board.make_move(m.clone());
                 let res = perft(board, depth - 1, false);

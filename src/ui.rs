@@ -2,7 +2,7 @@ use crate::chess::board::Side;
 use crate::chess::moves::{Move, Piece, Promotion};
 use crate::chess::moves_generation::MoveGenerator;
 use crate::chess::search::Search;
-use crate::chess::{board, util};
+use crate::chess::{board, search, util};
 use raylib::prelude::*;
 
 type TexturePerColor = [Option<Texture2D>; 2];
@@ -106,7 +106,7 @@ impl UI {
             let mouse_y = rl.get_mouse_y();
 
             if self.board.side_to_move() == self.side_cpu {
-                let result = self.board.search();
+                let result = self.board.search(search::Options::new());
                 self.board.make_move(result.m);
                 self.evaluation = result.score;
             }
@@ -154,7 +154,8 @@ impl UI {
                         && mouse_y < piece.y + 60
                     {
                         current_piece = Some(piece.clone());
-                        self.legal_moves = self.board.generate_moves_for(piece.file, piece.rank);
+                        let (moves, _) = self.board.generate_moves_for(piece.file, piece.rank);
+                        self.legal_moves = moves;
                         break;
                     }
                 }
