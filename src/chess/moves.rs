@@ -1,5 +1,5 @@
-use std::fmt;
 use super::util;
+use std::fmt;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Piece {
@@ -70,10 +70,7 @@ impl Move {
     }
 
     pub fn from_str(from: &str, to: &str) -> Self {
-        Self::from_idx(
-            util::str_to_idx(from),
-            util::str_to_idx(to),
-        )
+        Self::from_idx(util::str_to_idx(from), util::str_to_idx(to))
     }
 
     pub fn from_str_prom(from: &str, to: &str, promotion: Promotion) -> Self {
@@ -85,13 +82,17 @@ impl Move {
     pub fn from_uci(uci: &str) -> Self {
         match uci.len() {
             4 => Self::from_str(&uci[0..2], &uci[2..4]),
-            5 => Self::from_str_prom(&uci[0..2], &uci[2..4], match &uci[4..5] {
-                "q" => Promotion::Queen,
-                "r" => Promotion::Rook,
-                "b" => Promotion::Bishop,
-                "n" => Promotion::Knight,
-                _ => panic!("invalid uci move: {} (bad promotion)", uci),
-            }),
+            5 => Self::from_str_prom(
+                &uci[0..2],
+                &uci[2..4],
+                match &uci[4..5] {
+                    "q" => Promotion::Queen,
+                    "r" => Promotion::Rook,
+                    "b" => Promotion::Bishop,
+                    "n" => Promotion::Knight,
+                    _ => panic!("invalid uci move: {} (bad promotion)", uci),
+                },
+            ),
             _ => panic!("invalid uci move: {}", uci),
         }
     }
@@ -135,5 +136,26 @@ impl Move {
 
     pub fn get_promotion(&self) -> Promotion {
         Promotion::from((self.m & Self::MASK_PROMOTION) >> 12)
+    }
+
+    pub fn to_uci(&self) -> String {
+        let from = util::idx_to_str(self.get_from() as usize);
+        let to = util::idx_to_str(self.get_to() as usize);
+        match self.m & 0b100000000000000 != 0 {
+            false => format!("{}{}", from, to),
+            true => {
+                format!(
+                    "{}{}{}",
+                    from,
+                    to,
+                    match self.get_promotion() {
+                        Promotion::Queen => 'q',
+                        Promotion::Rook => 'r',
+                        Promotion::Bishop => 'b',
+                        Promotion::Knight => 'n',
+                    }
+                )
+            }
+        }
     }
 }
