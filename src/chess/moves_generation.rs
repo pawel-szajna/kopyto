@@ -38,6 +38,29 @@ impl MoveGenerator for Board {
     }
 }
 
+pub fn perft(board: &mut Board, depth: usize, init: bool) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+
+    let mut nodes = 0;
+    let (moves, _) = board.generate_moves();
+    let side = board.side_to_move();
+    for m in &moves {
+        board.make_move(m.clone());
+        if !board.in_check(side) {
+            let res = perft(board, depth - 1, false);
+            if init {
+                println!("{:?}: {}", m, res);
+            }
+            nodes += res;
+        }
+        board.unmake_move();
+    }
+
+    nodes
+}
+
 mod pimpl {
     use super::*;
 
@@ -338,29 +361,6 @@ mod tests {
     mod perft {
         use super::*;
 
-        fn perft(board: &mut Board, depth: usize, init: bool) -> u64 {
-            let mut nodes = 0;
-            if depth == 0 {
-                return 1;
-            }
-
-            let (moves, _) = board.generate_moves();
-            for m in &moves {
-                let side = board.side_to_move();
-                board.make_move(m.clone());
-                if !board.in_check(side) {
-                    let res = perft(board, depth - 1, false);
-                    if init {
-                        println!("{:?}: {}", m, res);
-                    }
-                    nodes += res;
-                }
-                board.unmake_move();
-            }
-
-            nodes
-        }
-
         fn perft_run(fen: &str, depth: usize, expected: u64) {
             let mut board = Board::from_fen(fen);
             assert_eq!(perft(&mut board, depth, true), expected);
@@ -537,7 +537,7 @@ mod tests {
                 "rnbqk2r/pppp1ppp/4p3/3nRP2/4P3/8/PPPP2PP/RNBQKBN1 b Qkq - 0 1",
                 4,
                 5,
-                vec![a_move!("e6", "f5")],
+                vec![],
             );
             piece_move_generation_test(
                 "rnbqk2r/pppp2pp/7R/Pp5p/P6n/8/PPPP2PP/RNBQKBN1 w Qkq - 0 1",
@@ -546,7 +546,7 @@ mod tests {
                 vec![a_move!("a4", "b5")],
             );
             piece_move_generation_test(
-                "rnbqk2r/pppp2pp/7R/Pp5p/P6n/8/PPPP2PP/RNBQKBN1 w Qkq - 0 1",
+                "rnbqk2r/pppp2pp/7R/Pp5p/P6n/8/PPPP2PP/RNBQKBN1 b Qkq - 0 1",
                 0,
                 6,
                 vec![a_move!("a7", "a6")],

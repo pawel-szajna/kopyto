@@ -633,12 +633,14 @@ impl Board {
         let opponent = if side == WHITE { BLACK } else { WHITE };
 
         if self.castle_kingside[side] != last_move.castle_kingside[side]
+            && last_move.from == masks::KING_STARTING_POSITION[side]
             && last_move.to == masks::CASTLE_KINGSIDE[side]
         {
             self.remove_piece(masks::ROOK_CASTLED_KINGSIDE[side]);
             self.put_piece(side, masks::ROOK_KINGSIDE[side], Piece::Rook);
         }
         if self.castle_queenside[side] != last_move.castle_queenside[side]
+            && last_move.from == masks::KING_STARTING_POSITION[side]
             && last_move.to == masks::CASTLE_QUEENSIDE[side]
         {
             self.remove_piece(masks::ROOK_CASTLED_QUEENSIDE[side]);
@@ -802,5 +804,29 @@ mod tests {
         board.assert_position("rnbqkbnr/pppp1pp1/4P2p/8/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 3");
         board.unmake_move();
         board.assert_position("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
+    }
+
+    mod bugs {
+        use super::*;
+
+        impl Board {
+            fn uci(&mut self, m: &str) {
+                self.make_move(Move::from_uci(m));
+            }
+        }
+
+        #[test]
+        fn bug_1() {
+            // after: 1. Nf3 a6 2. Rg1 and undoing the last move, the bishop on f1 disappears
+            // (bug in handling castling during unmake)
+            let mut board = Board::from_starting_position();
+            board.uci("g1f3");
+            board.uci("a7a6");
+            board.assert_position("rnbqkbnr/1ppppppp/p7/8/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 0 2");
+            board.uci("h1g1");
+            board.assert_position("rnbqkbnr/1ppppppp/p7/8/8/5N2/PPPPPPPP/RNBQKBR1 b Qkq - 1 2");
+            board.unmake_move();
+            board.assert_position("rnbqkbnr/1ppppppp/p7/8/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 0 2");
+        }
     }
 }

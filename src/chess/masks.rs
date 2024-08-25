@@ -44,6 +44,7 @@ pub const CASTLE_QUEENSIDE: [u64; 2] = [1u64 << 2, 1u64 << (LAST_RANK_IDX + 2)];
 pub const CASTLE_QUEENSIDE_BLOCKER_QUEEN: [u64; 2] = [1u64 << 3, 1u64 << (LAST_RANK_IDX + 3)];
 pub const CASTLE_QUEENSIDE_BLOCKER_KNIGHT: [u64; 2] = [1u64 << 1, 1u64 << (LAST_RANK_IDX + 1)];
 pub const CASTLE_KINGSIDE: [u64; 2] = [1u64 << 6, 1u64 << (LAST_RANK_IDX + 6)];
+pub const KING_STARTING_POSITION: [u64; 2] = [1u64 << 4, 1u64 << (LAST_RANK_IDX + 4)];
 pub const CASTLE_KINGSIDE_BLOCKER: [u64; 2] = [1u64 << 5, 1u64 << (LAST_RANK_IDX + 5)];
 pub const LAST_RANK: [u64; 2] = [RANKS[7], RANKS[0]];
 pub const SECOND_RANK: [u64; 2] = [RANKS[1], RANKS[6]];

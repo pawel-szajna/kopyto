@@ -105,6 +105,10 @@ impl UI {
             let mouse_x = rl.get_mouse_x();
             let mouse_y = rl.get_mouse_y();
 
+            let btn_x = 800 - 108;
+            let btn_y = 600 - 32;
+            let mouse_on_button = mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
+
             if self.board.side_to_move() == self.side_cpu {
                 let result = self.board.search(search::Options::new());
                 self.board.make_move(result.m);
@@ -123,6 +127,11 @@ impl UI {
                     16,
                     Color::WHITE,
                 );
+
+                d.draw_rectangle(btn_x, btn_y, 64, 16, if mouse_on_button { Color::BLACK } else { Color::DIMGRAY });
+                d.draw_rectangle_lines(btn_x, btn_y, 64, 16, Color::GRAY);
+                d.draw_text("UNDO", btn_x + 12, btn_y, 16, Color::WHITE);
+
                 d.draw_fps(d.get_screen_width() - 108, 16);
 
                 self.draw_board(&mut d, &mut pieces, &current_piece);
@@ -143,6 +152,10 @@ impl UI {
                     let (target_file, _) = promotion_window.unwrap();
                     self.draw_promotion_window(&mut d, target_file);
                 }
+            }
+
+            if mouse_on_button && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+                self.board.unmake_move();
             }
 
             if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)

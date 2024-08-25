@@ -2,6 +2,7 @@ use crate::chess::board::Board;
 use crate::chess::moves::Move;
 use crate::chess::search;
 use crate::chess::search::Search;
+use crate::chess::moves_generation::perft;
 use std::io::BufRead;
 
 pub struct UCI {
@@ -29,7 +30,7 @@ impl UCI {
                 "ucinewgame" => self.ucinewgame(),
                 cmd if cmd.starts_with("position") => self.position(cmd.strip_prefix("position ")),
                 cmd if cmd.starts_with("go") => self.go(cmd.strip_prefix("go ")),
-                _ => eprintln!("unknown command"),
+                _ => println!("info string unknown command"),
             }
         }
     }
@@ -68,16 +69,24 @@ impl UCI {
 
     fn position(&mut self, cmd: Option<&str>) {
         match cmd {
-            None => eprintln!("invalid position request"),
-            Some(cmd) => {
-                if cmd.starts_with("startpos") {
+            None => println!("info string invalid position request"),
+            Some(cmd) => match cmd {
+                cmd if cmd.starts_with("startpos") => {
                     self.board = Board::from_starting_position();
                     if cmd.starts_with("startpos moves ") {
                         self.position_moves(cmd.strip_prefix("startpos moves "));
                     }
-                } else {
-                    eprintln!("not supported");
-                }
+                },
+                cmd if cmd.starts_with("fen ") => {
+                    let moves = cmd.find(" moves ");
+                    let fen = if moves.is_some() { &cmd[4..moves.unwrap()] } else { &cmd[4..] };
+                    self.board = Board::from_fen(fen);
+                    if moves.is_some() {
+                        let moves_str = &cmd[(moves.unwrap() + 7)..];
+                        self.position_moves(Some(moves_str));
+                    }
+                },
+                _ => println!("info string unknown position format"),
             }
         }
     }
@@ -86,6 +95,18 @@ impl UCI {
     }
 
     fn go(&mut self, cmd: Option<&str>) {
+        if cmd.is_some_and(|cmd| cmd.starts_with("perft")) {
+            let cmd = cmd.unwrap().strip_prefix("perft ");
+            let depth = cmd.unwrap().to_string().parse::<usize>();
+            match depth {
+                Err(what) => panic!("cannot parse: {}", what.to_string()),
+                Ok(depth) => {
+                    println!("\nNodes searched: {}", perft(&mut self.board, depth, true));
+                }
+            }
+            return;
+        }
+
         let mut options = search::Options::new();
         self.parse_go_options(&mut options, cmd);
         let result = self.board.search(options);
