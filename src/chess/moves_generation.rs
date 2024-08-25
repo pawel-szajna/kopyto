@@ -277,6 +277,7 @@ mod pimpl {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

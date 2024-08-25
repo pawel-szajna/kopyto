@@ -45,9 +45,9 @@ struct PieceInfo {
 }
 
 impl UI {
-    pub fn new(board: board::Board) -> Self {
+    pub fn new() -> Self {
         Self {
-            board,
+            board: board::Board::from_starting_position(),
 
             t_pawn: NO_TEXTURE,
             t_king: NO_TEXTURE,

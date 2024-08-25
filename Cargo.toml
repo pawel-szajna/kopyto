@@ -6,4 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-raylib = { version = "5.0" }
+clap = { version = "4.5.16", features = ["derive"] }
+raylib = { version = "5.0", optional = true }
+
+[features]
+ui = [ "dep:raylib" ]

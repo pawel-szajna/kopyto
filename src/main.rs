@@ -1,8 +1,43 @@
-mod ui;
+use clap::{Parser, Subcommand};
+
 mod chess;
 
-fn main() {
-    let board = chess::board::Board::from_starting_position();
-    let mut ui = ui::UI::new(board);
+#[cfg(feature = "ui")]
+mod ui;
+
+#[derive(Parser, Debug)]
+#[command(name = "kopyto")]
+#[command(about = "An experimental chess engine")]
+struct Args {
+    #[command(subcommand)]
+    mode: Option<Modes>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Modes {
+    UCI,
+    UI,
+}
+
+#[cfg(feature = "ui")]
+fn run_ui() {
+    let mut ui = ui::UI::new();
     ui.run();
+}
+
+#[cfg(not(feature = "ui"))]
+fn run_ui() {
+    eprintln!("UI feature not enabled during compilation");
+    std::process::exit(1);
+}
+
+fn main() {
+    let args = Args::parse();
+    match args.mode {
+        Some(Modes::UI) | None => run_ui(),
+        Some(Modes::UCI) => {
+            eprintln!("Not implemented");
+            std::process::exit(1);
+        }
+    }
 }
