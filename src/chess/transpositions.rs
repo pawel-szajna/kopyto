@@ -168,7 +168,7 @@ impl Transpositions {
 
     pub fn get(&self, hash: u64, depth: usize, alpha: i64, beta: i64) -> Option<(i64, Move)> {
         let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
-        if entry.hash != hash {
+        if entry.hash != hash || entry.depth < depth {
             return None;
         }
 
