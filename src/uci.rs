@@ -24,6 +24,7 @@ impl UCI {
             let line = buffer.trim();
             match line {
                 "quit" => break,
+                "stop" => (),
                 "uci" => self.uci(),
                 "isready" => self.isready(),
                 "ucinewgame" => self.ucinewgame(),
