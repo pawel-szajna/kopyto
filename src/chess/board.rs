@@ -19,7 +19,7 @@ struct History {
     capture: Option<Piece>,
     half_moves: u32,
     promotion: bool,
-    en_passant: Option<u64>,
+    en_passant: u64,
     attacks: [Option<u64>; 2],
 }
 
@@ -30,7 +30,7 @@ impl History {
         castle_kingside: ColorBool,
         castle_queenside: ColorBool,
         half_moves: u32,
-        en_passant: Option<u64>,
+        en_passant: u64,
     ) -> Self {
         Self {
             from,
@@ -67,7 +67,7 @@ pub struct Board {
     half_moves_clock: u32,
     full_moves_count: u32,
 
-    en_passant: Option<u64>,
+    pub(super) en_passant: u64,
     check: [Option<bool>; 2],
     pub(super) attacks: [Option<u64>; 2],
     pub(super) moves: [Option<Vec<Move>>; 2],
@@ -96,7 +96,7 @@ impl Board {
             half_moves_clock: 0,
             full_moves_count: 1,
 
-            en_passant: None,
+            en_passant: 0,
             check: [None, None],
             attacks: [None, None],
             moves: [None, None],
@@ -174,7 +174,7 @@ impl Board {
                 Some(' ') => break,
                 Some(file) if file.is_alphabetic() => {
                     let rank = fen.next().unwrap();
-                    board.en_passant = Some(1u64 << str_to_idx(format!("{}{}", file, rank).as_str()));
+                    board.en_passant = 1u64 << str_to_idx(format!("{}{}", file, rank).as_str());
                 }
                 _ => panic!("Invalid fen, expected en passant data"),
             }
@@ -341,8 +341,8 @@ impl Board {
 
         result.push(' ');
         match self.en_passant {
-            None => result.push('-'),
-            Some(x) => result.push_str(mask_to_str(x).as_str()),
+            0 => result.push('-'),
+            x => result.push_str(mask_to_str(x).as_str()),
         }
 
         result.push_str(format!(" {}", self.half_moves_clock).as_str());
@@ -443,7 +443,7 @@ impl Board {
     }
 
     pub fn en_passant(&self, mask: u64) -> bool {
-        self.en_passant.is_some_and(|en_passant| mask == en_passant)
+        self.en_passant == mask
     }
 
     pub fn check_square(&self, mask: u64) -> Option<(Side, Piece)> {
@@ -617,7 +617,7 @@ impl Board {
             history_entry.promotion = true;
         }
 
-        if piece_type == Piece::Pawn && Some(to_mask) == self.en_passant {
+        if piece_type == Piece::Pawn && to_mask == self.en_passant {
             if side == WHITE {
                 self.remove_piece(to_mask >> 8);
             } else {
@@ -625,14 +625,14 @@ impl Board {
             }
         }
 
-        self.en_passant = None;
+        self.en_passant = 0;
 
         if piece_type == Piece::Pawn
             && from_mask & masks::SECOND_RANK[side] != 0
             && to_mask & masks::EN_PASSANT_RANK[side] != 0
             && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent] != 0
         {
-            self.en_passant = Some(if side == WHITE { from_mask << 8 } else { from_mask >> 8 });
+            self.en_passant = if side == WHITE { from_mask << 8 } else { from_mask >> 8 };
         }
 
         self.put_piece(side, to_mask, piece_type);
@@ -685,8 +685,8 @@ impl Board {
             piece_type = Piece::Pawn;
         }
 
-        if piece_type == Piece::Pawn && last_move.en_passant == Some(last_move.to) {
-            let capture_square = last_move.en_passant.unwrap();
+        if piece_type == Piece::Pawn && last_move.en_passant == last_move.to {
+            let capture_square = last_move.en_passant;
             self.put_piece(
                 opponent,
                 if side == WHITE {

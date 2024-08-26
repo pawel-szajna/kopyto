@@ -180,48 +180,56 @@ mod pimpl {
         fn generate_pawn(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             let basic_direction = if side == WHITE { mask << 8 } else { mask >> 8 };
             let blockade = self.has_piece(basic_direction);
-            let mut pawn_moves = Vec::with_capacity(3);
+            let mut pawn_moves = [Move::new(), Move::new(), Move::new()];
+            let mut pawn_moves_used = 0usize;
 
             if !blockade {
-                pawn_moves.push(Move::from_mask(mask, basic_direction));
+                pawn_moves[pawn_moves_used] = Move::from_mask(mask, basic_direction);
+                pawn_moves_used += 1;
             }
 
             let piece_to_left = if side == WHITE { mask << 7 } else { mask >> 9 };
             let piece_to_right = if side == WHITE { mask << 9 } else { mask >> 7 };
             let opponent = if side == WHITE { BLACK } else { WHITE };
 
+            let possible_pawn_attacks = self.occupied[opponent] | self.en_passant;
+
             if masks::FILES[0] & mask == 0 {
                 *attacks |= piece_to_left;
-                if self.has_side_piece(opponent, piece_to_left) || self.en_passant(piece_to_left) {
-                    pawn_moves.push(Move::from_mask(mask, piece_to_left));
+                if possible_pawn_attacks & piece_to_left != 0 {
+                    pawn_moves[pawn_moves_used] = Move::from_mask(mask, piece_to_left);
+                    pawn_moves_used += 1;
                 }
             }
 
             if masks::FILES[7] & mask == 0 {
                 *attacks |= piece_to_right;
-                if self.has_side_piece(opponent, piece_to_right) || self.en_passant(piece_to_right) {
-                    pawn_moves.push(Move::from_mask(mask, piece_to_right));
+                if possible_pawn_attacks & piece_to_right != 0 {
+                    pawn_moves[pawn_moves_used] = Move::from_mask(mask, piece_to_right);
+                    pawn_moves_used += 1;
                 }
             }
 
             if masks::RANKS_RELATIVE[6][side] & mask != 0 {
-                moves.append(
-                    &mut pawn_moves
-                        .into_iter()
-                        .flat_map(|m| {
-                            std::iter::repeat(m)
-                                .take(4)
-                                .zip([Promotion::Queen, Promotion::Rook, Promotion::Bishop, Promotion::Knight])
-                                .map(|(m, p)| {
-                                    let mut m = m.clone();
-                                    m.set_promotion(p);
-                                    m
-                                })
-                        })
-                        .collect(),
-                );
+                pawn_moves[0..pawn_moves_used]
+                    .into_iter()
+                    .flat_map(|m| {
+                        std::iter::repeat(m)
+                            .take(4)
+                            .zip([Promotion::Queen, Promotion::Rook, Promotion::Bishop, Promotion::Knight])
+                            .map(|(m, p)| {
+                                let mut m = m.clone();
+                                m.set_promotion(p);
+                                m
+                            })
+                    })
+                    .for_each(|m| {
+                        moves.push(m);
+                    });
             } else {
-                moves.append(&mut pawn_moves);
+                pawn_moves[0..pawn_moves_used].into_iter().for_each(|m| {
+                    moves.push(m.clone());
+                });
             }
 
             let double_move_target = if side == WHITE { mask << 16 } else { mask >> 16 };
