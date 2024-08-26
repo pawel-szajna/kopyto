@@ -151,18 +151,38 @@ mod pimpl {
 
     const NULL_MOVE: Move = Move::new();
 
+    struct SearchContext {
+        pub position_history: Vec<u64>,
+    }
+
+    impl SearchContext {
+        pub fn new() -> Self {
+            Self {
+                position_history: Vec::with_capacity(50),
+            }
+        }
+
+        pub fn triple_repetition(&self) -> bool {
+            match self.position_history.last() {
+                None => false,
+                Some(position) => self.position_history.iter().filter(|p| p == &position).count() == 3,
+            }
+        }
+    }
+
     pub trait SearchImpl {
         fn search_impl(&mut self, options: Options) -> SearchResult;
 
         fn order_moves(&mut self, moves: &mut Vec<Move>);
         fn eval(&self) -> i64;
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
-        fn negamax(&mut self, depth: usize, alpha: i64, beta: i64) -> (Move, i64);
+        fn negamax(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> (Move, i64);
     }
 
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> SearchResult {
-            let (m, eval) = self.negamax(options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
+            let mut context = SearchContext::new();
+            let (m, eval) = self.negamax(&mut context, options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
             result!(m, -eval, options.depth.unwrap_or(usize::MAX) as u64)
         }
 
@@ -204,7 +224,7 @@ mod pimpl {
             score
         }
 
-        fn negamax(&mut self, depth: usize, mut alpha: i64, beta: i64) -> (Move, i64) {
+        fn negamax(&mut self, context: &mut SearchContext, depth: usize, mut alpha: i64, beta: i64) -> (Move, i64) {
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
@@ -212,6 +232,10 @@ mod pimpl {
             match self.transpositions.get(key, depth, alpha, beta) {
                 Some((score, m)) => return (m, score),
                 None => (),
+            }
+
+            if context.triple_repetition() {
+                return (NULL_MOVE, 0);
             }
 
             if depth == 0 {
@@ -242,8 +266,10 @@ mod pimpl {
 
             for m in moves {
                 self.make_move(m.clone());
-                let (_, mut score) = self.negamax(depth - 1, -beta, -alpha);
                 let key = self.key();
+                context.position_history.push(key);
+                let (_, mut score) = self.negamax(context, depth - 1, -beta, -alpha);
+                context.position_history.pop();
                 self.unmake_move();
 
                 score = -score;
