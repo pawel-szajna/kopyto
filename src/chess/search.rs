@@ -152,20 +152,15 @@ mod pimpl {
     const NULL_MOVE: Move = Move::new();
 
     struct SearchContext {
-        pub position_history: Vec<u64>,
+        depth: usize,
+        best_move: Move,
     }
 
     impl SearchContext {
-        pub fn new() -> Self {
+        pub fn new(depth: usize) -> Self {
             Self {
-                position_history: Vec::with_capacity(50),
-            }
-        }
-
-        pub fn triple_repetition(&self) -> bool {
-            match self.position_history.last() {
-                None => false,
-                Some(position) => self.position_history.iter().filter(|p| p == &position).count() == 3,
+                depth,
+                best_move: NULL_MOVE,
             }
         }
     }
@@ -176,21 +171,33 @@ mod pimpl {
         fn order_moves(&mut self, moves: &mut Vec<Move>);
         fn eval(&self) -> i64;
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
-        fn negamax(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> (Move, i64);
+        fn negamax(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> i64;
     }
 
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> SearchResult {
-            let mut context = SearchContext::new();
-            let (m, eval) = self.negamax(&mut context, options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
-            result!(m, -eval, options.depth.unwrap_or(usize::MAX) as u64)
+            let depth = options.depth.unwrap_or(usize::MAX);
+
+            let mut context = SearchContext::new(depth);
+
+            let eval = self.negamax(&mut context, options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
+            let abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
+
+            if context.best_move == NULL_MOVE {
+                println!("info string null move selected as best, bug?");
+            }
+
+            result!(context.best_move, abs_eval, options.depth.unwrap_or(usize::MAX) as u64)
         }
 
         fn order_moves(&mut self, moves: &mut Vec<Move>) {
-            let side = self.side_to_move();
             let mut rng = rand::thread_rng();
             moves.shuffle(&mut rng);
-            let attacks = self.get_attacks(side);
+
+            let side = self.side_to_move();
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let attacks = self.occupied[opponent];
+
             moves.sort_by(|x, y| {
                 match (1u64 << x.get_to()) & attacks == 0 && (1u64 << y.get_to()) & attacks != 0 {
                     true => std::cmp::Ordering::Less,
@@ -224,40 +231,36 @@ mod pimpl {
             score
         }
 
-        fn negamax(&mut self, context: &mut SearchContext, depth: usize, mut alpha: i64, beta: i64) -> (Move, i64) {
+        fn negamax(&mut self, context: &mut SearchContext, depth: usize, mut alpha: i64, beta: i64) -> i64 {
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
             let key = self.key();
             match self.transpositions.get(key, depth, alpha, beta) {
-                Some((score, m)) => return (m, score),
+                Some((score, _)) => return score,
                 None => (),
             }
 
-            if context.triple_repetition() {
-                return (NULL_MOVE, 0);
+            if self.triple_repetition() {
+                return 0;
             }
 
             if depth == 0 {
-                return (NULL_MOVE, self.eval() * multiplier);
+                return self.eval() * multiplier;
             }
 
             let (mut moves, _) = self.generate_moves();
             self.prune_checks(self.side_to_move(), &mut moves);
 
             if moves.is_empty() {
-                return (
-                    NULL_MOVE,
-                    if self.in_check(self.side_to_move()) {
-                        (self.eval() - multiplier * 100000) * multiplier
-                    } else {
-                        0
-                    },
-                );
+                return if self.in_check(self.side_to_move()) {
+                    -multiplier * 1000000 // checkmate
+                } else {
+                    0 // stalemate
+                }
             }
 
             let mut best = NULL_MOVE;
-            let mut best_eval = i64::MIN + 1;
 
             self.order_moves(&mut moves);
 
@@ -267,33 +270,29 @@ mod pimpl {
             for m in moves {
                 self.make_move(m.clone());
                 let key = self.key();
-                context.position_history.push(key);
-                let (_, mut score) = self.negamax(context, depth - 1, -beta, -alpha);
-                context.position_history.pop();
+                let score = -self.negamax(context, depth - 1, -beta, -alpha);
                 self.unmake_move();
-
-                score = -score;
-
-                if score > best_eval {
-                    best = m;
-                    best_eval = score;
-
-                    if score > alpha {
-                        found_exact = true;
-                        best_move = key;
-                        alpha = score;
-                    }
-                }
 
                 if score >= beta {
                     self.transpositions.set(key, depth, LowerBound(beta), m);
-                    return (best, best_eval);
+                    return beta;
+                }
+
+                if score > alpha {
+                    best = m;
+                    found_exact = true;
+                    best_move = key;
+                    alpha = score;
+
+                    if depth == context.depth {
+                        context.best_move = m;
+                    }
                 }
             }
 
             self.transpositions.set(key, depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
 
-            (best, best_eval)
+            alpha
         }
     }
 }

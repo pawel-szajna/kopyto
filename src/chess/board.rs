@@ -22,6 +22,7 @@ struct History {
     promotion: bool,
     en_passant: u64,
     attacks: [Option<u64>; 2],
+    hash: u64,
 }
 
 impl History {
@@ -32,6 +33,7 @@ impl History {
         castle_queenside: ColorBool,
         half_moves: u32,
         en_passant: u64,
+        hash: u64,
     ) -> Self {
         Self {
             from,
@@ -43,6 +45,7 @@ impl History {
             promotion: false,
             en_passant,
             attacks: [None, None],
+            hash,
         }
     }
 }
@@ -596,6 +599,7 @@ impl Board {
             self.castle_queenside,
             self.half_moves_clock,
             self.en_passant,
+            self.hash,
         );
 
         if self.has_piece(to_mask) {
@@ -734,7 +738,11 @@ impl Board {
         self.check = [None, None];
         self.attacks = last_move.attacks;
         self.moves = [None, None];
-        self.update_hash();
+        self.hash = last_move.hash;
+    }
+
+    pub fn triple_repetition(&self) -> bool {
+        self.history.iter().filter(|h| h.hash == self.hash).count() > 2
     }
 
     pub fn last_move(&self) -> Option<(u64, u64)> {
