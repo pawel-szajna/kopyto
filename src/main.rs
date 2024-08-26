@@ -2,9 +2,9 @@ use clap::{Parser, Subcommand};
 
 mod chess;
 
+mod uci;
 #[cfg(feature = "ui")]
 mod ui;
-mod uci;
 
 #[derive(Parser, Debug)]
 #[command(name = "kopyto")]

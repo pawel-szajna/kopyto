@@ -25,22 +25,10 @@ pub struct UI {
     side_cpu: Side,
 }
 
-const SQUARE: [Color; 2] = [
-    Color::new(188, 143, 143, 255),
-    Color::new(245, 233, 220, 255),
-];
-const SQUARE_LAST_MOVE: [Color; 2] = [
-    Color::new(183, 188, 143, 255),
-    Color::new(217, 222, 177, 255),
-];
-const SQUARE_LEGAL: [Color; 2] = [
-    Color::new(158, 143, 188, 255),
-    Color::new(207, 188, 214, 255),
-];
-const SQUARE_ATTACKED: [Color; 2] = [
-    Color::new(212, 106, 194, 255),
-    Color::new(224, 137, 210, 255),
-];
+const SQUARE: [Color; 2] = [Color::new(188, 143, 143, 255), Color::new(245, 233, 220, 255)];
+const SQUARE_LAST_MOVE: [Color; 2] = [Color::new(183, 188, 143, 255), Color::new(217, 222, 177, 255)];
+const SQUARE_LEGAL: [Color; 2] = [Color::new(158, 143, 188, 255), Color::new(207, 188, 214, 255)];
+const SQUARE_ATTACKED: [Color; 2] = [Color::new(212, 106, 194, 255), Color::new(224, 137, 210, 255)];
 const PROMOTION_BACKGROUND: Color = Color::new(255, 255, 255, 192);
 
 #[derive(Copy, Clone)]
@@ -113,12 +101,9 @@ impl UI {
 
             let btn_x = 800 - 108;
             let btn_y = 600 - 32;
-            let mouse_on_button =
-                mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
+            let mouse_on_button = mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
 
-            if self.board.side_to_move() == self.side_cpu
-                && !self.board.in_checkmate(self.side_cpu)
-            {
+            if self.board.side_to_move() == self.side_cpu && !self.board.in_checkmate(self.side_cpu) {
                 let result = self.board.search(search::Options::new());
                 if result.m.get_to() == result.m.get_from() && result.m.get_to() == 0u16 {
                     eprintln!("Tried making a null move with eval {}", result.score);
@@ -130,17 +115,11 @@ impl UI {
             }
 
             if rl.is_key_pressed(KeyboardKey::KEY_W) {
-                eprintln!(
-                    "White is checkmated: {:?}",
-                    self.board.in_checkmate(board::WHITE)
-                );
+                eprintln!("White is checkmated: {:?}", self.board.in_checkmate(board::WHITE));
             }
 
             if rl.is_key_pressed(KeyboardKey::KEY_B) {
-                eprintln!(
-                    "Black is checkmated: {:?}",
-                    self.board.in_checkmate(board::BLACK)
-                );
+                eprintln!("Black is checkmated: {:?}", self.board.in_checkmate(board::BLACK));
             }
 
             {
@@ -148,25 +127,9 @@ impl UI {
 
                 d.clear_background(Color::BLACK);
                 d.draw_text("kopyto", 16, 16, 16, Color::WHITE);
-                d.draw_text(
-                    self.board.export_fen().as_str(),
-                    16,
-                    d.get_screen_height() - 32,
-                    16,
-                    Color::WHITE,
-                );
+                d.draw_text(self.board.export_fen().as_str(), 16, d.get_screen_height() - 32, 16, Color::WHITE);
 
-                d.draw_rectangle(
-                    btn_x,
-                    btn_y,
-                    64,
-                    16,
-                    if mouse_on_button {
-                        Color::BLACK
-                    } else {
-                        Color::DIMGRAY
-                    },
-                );
+                d.draw_rectangle(btn_x, btn_y, 64, 16, if mouse_on_button { Color::BLACK } else { Color::DIMGRAY });
                 d.draw_rectangle_lines(btn_x, btn_y, 64, 16, Color::GRAY);
                 d.draw_text("UNDO", btn_x + 12, btn_y, 16, Color::WHITE);
 
@@ -199,14 +162,8 @@ impl UI {
             if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) {
                 if self.attack_mask.is_none() {
                     for piece in &pieces {
-                        if mouse_x > piece.x
-                            && mouse_x < piece.x + 60
-                            && mouse_y > piece.y
-                            && mouse_y < piece.y + 60
-                        {
-                            let moves = self
-                                .board
-                                .generate_side_moves_for(piece.side, piece.file, piece.rank);
+                        if mouse_x > piece.x && mouse_x < piece.x + 60 && mouse_y > piece.y && mouse_y < piece.y + 60 {
+                            let moves = self.board.generate_side_moves_for(piece.side, piece.file, piece.rank);
                             self.attack_mask = Some(moves.1);
                             break;
                         }
@@ -216,27 +173,19 @@ impl UI {
                 self.attack_mask = None;
             }
 
-            if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
-            {
+            if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                 for piece in &pieces {
-                    if mouse_x > piece.x
-                        && mouse_x < piece.x + 60
-                        && mouse_y > piece.y
-                        && mouse_y < piece.y + 60
-                    {
+                    if mouse_x > piece.x && mouse_x < piece.x + 60 && mouse_y > piece.y && mouse_y < piece.y + 60 {
                         current_piece = Some(piece.clone());
                         let mut moves = self.board.generate_moves_for(piece.file, piece.rank);
-                        self.board
-                            .prune_checks(self.board.side_to_move(), &mut moves.0);
+                        self.board.prune_checks(self.board.side_to_move(), &mut moves.0);
                         self.legal_moves = moves.0;
                         break;
                     }
                 }
             }
 
-            if promotion_window.is_some()
-                && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT)
-            {
+            if promotion_window.is_some() && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
                 let piece = current_piece.unwrap();
                 let (target_file, target_rank) = promotion_window.unwrap();
                 let x = 160 + (target_file as i32) * 60;
@@ -263,11 +212,7 @@ impl UI {
                 && promotion_window.is_none()
                 && rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT)
             {
-                if mouse_x > 160
-                    && mouse_x < 160 + (8 * 60)
-                    && mouse_y > 60
-                    && mouse_y < 60 + (8 * 60)
-                {
+                if mouse_x > 160 && mouse_x < 160 + (8 * 60) && mouse_y > 60 && mouse_y < 60 + (8 * 60) {
                     let target_file = (mouse_x as usize - 160) / 60;
                     let target_rank = 7 - (mouse_y as usize - 60) / 60;
                     let piece = current_piece.unwrap();
@@ -316,12 +261,7 @@ impl UI {
         self.draw_piece_graphics(x, y + 60 * 3, d, side, Color::WHITE, Piece::Knight);
     }
 
-    fn draw_board(
-        &mut self,
-        d: &mut RaylibDrawHandle,
-        pieces: &mut Vec<PieceInfo>,
-        current_piece: &Option<PieceInfo>,
-    ) {
+    fn draw_board(&mut self, d: &mut RaylibDrawHandle, pieces: &mut Vec<PieceInfo>, current_piece: &Option<PieceInfo>) {
         for rank in 0i32..8 {
             for file in 0i32..8 {
                 let current_square = util::coords_to_mask(file as usize, rank as usize);
@@ -341,9 +281,10 @@ impl UI {
                 {
                     color = SQUARE_LEGAL[square_shade];
                 }
-                if self.attack_mask.is_some_and(|mask| {
-                    mask & util::coords_to_mask(file as usize, rank as usize) != 0
-                }) {
+                if self
+                    .attack_mask
+                    .is_some_and(|mask| mask & util::coords_to_mask(file as usize, rank as usize) != 0)
+                {
                     color = SQUARE_ATTACKED[square_shade];
                 }
                 let x = 160 + file * 60;
@@ -409,15 +350,7 @@ impl UI {
         }
     }
 
-    fn draw_piece_graphics(
-        &self,
-        x: i32,
-        y: i32,
-        d: &mut RaylibDrawHandle,
-        side: Side,
-        color: Color,
-        piece: Piece,
-    ) {
+    fn draw_piece_graphics(&self, x: i32, y: i32, d: &mut RaylibDrawHandle, side: Side, color: Color, piece: Piece) {
         d.draw_texture(self.get_texture(side, piece).as_ref().unwrap(), x, y, color);
     }
 }

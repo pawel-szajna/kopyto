@@ -90,13 +90,10 @@ mod pimpl {
 
         fn negamax(&mut self, depth: usize) -> (Move, i64) {
             let side = self.side_to_move();
-            let multiplier = if side == WHITE { 1 } else { - 1 };
+            let multiplier = if side == WHITE { 1 } else { -1 };
 
             if depth == 0 {
-                return (
-                    NULL_MOVE,
-                    self.eval() * multiplier,
-                );
+                return (NULL_MOVE, self.eval() * multiplier);
             }
 
             let (mut moves, _) = self.generate_moves();

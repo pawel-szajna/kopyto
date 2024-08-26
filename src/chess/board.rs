@@ -174,8 +174,7 @@ impl Board {
                 Some(' ') => break,
                 Some(file) if file.is_alphabetic() => {
                     let rank = fen.next().unwrap();
-                    board.en_passant =
-                        Some(1u64 << str_to_idx(format!("{}{}", file, rank).as_str()));
+                    board.en_passant = Some(1u64 << str_to_idx(format!("{}{}", file, rank).as_str()));
                 }
                 _ => panic!("Invalid fen, expected en passant data"),
             }
@@ -316,11 +315,7 @@ impl Board {
         }
 
         result.push(' ');
-        result.push(if self.current_color == WHITE {
-            'w'
-        } else {
-            'b'
-        });
+        result.push(if self.current_color == WHITE { 'w' } else { 'b' });
 
         result.push(' ');
         if !(self.castle_kingside[WHITE]
@@ -555,9 +550,7 @@ impl Board {
             && !self.has_piece(masks::CASTLE_KINGSIDE[side])
             && !self.has_piece(masks::CASTLE_KINGSIDE_BLOCKER[side])
             && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
-            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_KINGSIDE_BLOCKER[side])
-                & attacks
-                == 0
+            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_KINGSIDE_BLOCKER[side]) & attacks == 0
     }
 
     pub fn can_castle_queenside(&mut self, side: Side) -> bool {
@@ -567,9 +560,7 @@ impl Board {
             && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
             && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
             && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
-            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
-                & attacks
-                == 0
+            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side]) & attacks == 0
     }
 
     pub fn make_move(&mut self, m: Move) {
@@ -639,14 +630,9 @@ impl Board {
         if piece_type == Piece::Pawn
             && from_mask & masks::SECOND_RANK[side] != 0
             && to_mask & masks::EN_PASSANT_RANK[side] != 0
-            && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent]
-                != 0
+            && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent] != 0
         {
-            self.en_passant = Some(if side == WHITE {
-                from_mask << 8
-            } else {
-                from_mask >> 8
-            });
+            self.en_passant = Some(if side == WHITE { from_mask << 8 } else { from_mask >> 8 });
         }
 
         self.put_piece(side, to_mask, piece_type);
@@ -760,14 +746,12 @@ mod tests {
 
     #[test]
     fn test_starting_position() {
-        Board::from_starting_position()
-            .assert_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        Board::from_starting_position().assert_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     }
 
     #[test]
     fn test_capture_moves() {
-        let mut board =
-            Board::from_fen("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
+        let mut board = Board::from_fen("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
         board.make_move_str("e4", "f5");
         board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
         board.make_move_str("c6", "b4");
@@ -783,8 +767,7 @@ mod tests {
         board.unmake_move();
         board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1P2/1P6/2N5/P1PP1PPP/R1BQKBNR b KQkq - 0 4");
         board.unmake_move();
-        board
-            .assert_position("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
+        board.assert_position("r2qkbnr/ppp1pppp/2n5/3p1b2/1P2P3/2N5/P1PP1PPP/R1BQKBNR w KQkq - 1 4");
     }
 
     #[test]
@@ -823,8 +806,7 @@ mod tests {
 
     #[test]
     fn test_en_passant() {
-        let mut board =
-            Board::from_fen("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
+        let mut board = Board::from_fen("rnbqkbnr/pppp1pp1/7p/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 3");
         board.make_move_str("d5", "e6");
         board.assert_position("rnbqkbnr/pppp1pp1/4P2p/8/8/8/PPP1PPPP/RNBQKBNR b KQkq - 0 3");
         board.make_move_str("d7", "d5");

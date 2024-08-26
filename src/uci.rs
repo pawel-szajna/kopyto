@@ -11,9 +11,7 @@ pub struct UCI {
 
 impl UCI {
     pub fn new() -> Self {
-        Self {
-            board: Board::new(),
-        }
+        Self { board: Board::new() }
     }
 
     pub fn run(&mut self) {
