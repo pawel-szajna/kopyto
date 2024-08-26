@@ -140,7 +140,7 @@ impl Entry {
     }
 }
 
-const TRANSPOSITION_TABLE_SIZE: usize = 16 * 1024 * 1024;
+const TRANSPOSITION_TABLE_SIZE: usize = 24 * 1024 * 1024;
 const TRANSPOSITION_TABLE_LENGTH: usize = TRANSPOSITION_TABLE_SIZE / size_of::<Entry>();
 
 pub struct Transpositions {
