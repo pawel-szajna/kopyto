@@ -183,12 +183,12 @@ mod pimpl {
             let mut score = 0i64;
 
             for (side, modifier) in [(WHITE, 1i64), (BLACK, -1i64)] {
-                score += modifier * self.eval_piece(self.kings[side], 100, &weights::KING[side]);
+                score += modifier * self.eval_piece(self.kings[side], 0, &weights::KING[side]);
                 score += modifier * self.eval_piece(self.pawns[side], 100, &weights::PAWN[side]);
-                score += modifier * self.eval_piece(self.knights[side], 100, &weights::KNIGHT[side]);
-                score += modifier * self.eval_piece(self.bishops[side], 100, &weights::BISHOP[side]);
-                score += modifier * self.eval_piece(self.rooks[side], 100, &weights::ROOK[side]);
-                score += modifier * self.eval_piece(self.queens[side], 100, &weights::QUEEN[side]);
+                score += modifier * self.eval_piece(self.knights[side], 300, &weights::KNIGHT[side]);
+                score += modifier * self.eval_piece(self.bishops[side], 320, &weights::BISHOP[side]);
+                score += modifier * self.eval_piece(self.rooks[side], 500, &weights::ROOK[side]);
+                score += modifier * self.eval_piece(self.queens[side], 900, &weights::QUEEN[side]);
             }
 
             score
