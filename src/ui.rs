@@ -94,6 +94,8 @@ impl UI {
 
         self.load_textures(&mut rl, &thread);
 
+        let mut suggestion = false;
+
         while !rl.window_should_close() {
             pieces.clear();
             let mouse_x = rl.get_mouse_x();
@@ -103,15 +105,24 @@ impl UI {
             let btn_y = 600 - 32;
             let mouse_on_button = mouse_x > btn_x && mouse_x < btn_x + 64 && mouse_y > btn_y && mouse_y < btn_y + 16;
 
-            if self.board.side_to_move() == self.side_cpu && !self.board.in_checkmate(self.side_cpu) {
+            let side = self.board.side_to_move();
+
+            if side == self.side_cpu && !self.board.in_checkmate(self.side_cpu) {
                 let result = self.board.search(search::Options::new());
                 if result.m.get_to() == result.m.get_from() && result.m.get_to() == 0u16 {
-                    eprintln!("Tried making a null move with eval {}", result.score);
+                    eprintln!("Tried making a null move with eval {}.{:2}", result.score / 100, (result.score % 100).abs());
                 } else {
-                    eprintln!("Playing move {:?} eval {}", result.m, result.score);
+                    eprintln!("Playing move {:?} eval {}.{:2}", result.m, result.score / 100, (result.score % 100).abs());
                     self.board.make_move(result.m);
+                    suggestion = false;
                 }
                 self.evaluation = result.score;
+            }
+
+            if side != self.side_cpu && !self.board.in_checkmate(side) && !suggestion {
+                let result = self.board.search(search::Options::new());
+                eprintln!("CPU suggestion: {:?} eval {}.{:2}", result.m, result.score / 100, (result.score % 100).abs());
+                suggestion = true;
             }
 
             if rl.is_key_pressed(KeyboardKey::KEY_W) {
@@ -202,6 +213,7 @@ impl UI {
                         target_rank * 8usize + target_file,
                         target_piece,
                     ));
+                    suggestion = false;
                 }
                 current_piece = None;
                 promotion_window = None;
@@ -231,6 +243,7 @@ impl UI {
                                 piece.rank * 8usize + piece.file,
                                 target_rank * 8usize + target_file,
                             ));
+                            suggestion = false;
                             current_piece = None;
                             self.legal_moves.clear();
                         }
