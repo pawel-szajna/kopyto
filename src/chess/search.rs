@@ -237,8 +237,13 @@ mod pimpl {
 
             let key = self.key();
             match self.transpositions.get(key, depth, alpha, beta) {
-                Some((score, _)) => return score,
                 None => (),
+                Some((score, m)) => {
+                    if depth == context.depth {
+                        context.best_move = m;
+                    }
+                    return score;
+                },
             }
 
             if self.triple_repetition() {
