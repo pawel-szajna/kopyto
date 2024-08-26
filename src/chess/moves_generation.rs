@@ -136,6 +136,8 @@ mod pimpl {
             self.generate_piece(&mut moves, &mut attacks, side, self.knights[side], Self::generate_knight);
             self.generate_king(&mut moves, &mut attacks, side, self.kings[side]);
 
+            self.moves[side] = Some(moves.clone());
+            self.attacks[side] = Some(attacks);
             (moves, attacks)
         }
 

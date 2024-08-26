@@ -58,20 +58,29 @@ mod pimpl {
     pub trait SearchImpl {
         fn search_impl(&mut self, options: Options) -> SearchResult;
 
-        fn order_moves(&self, moves: &mut Vec<Move>);
+        fn order_moves(&mut self, moves: &mut Vec<Move>);
         fn eval(&mut self) -> i64;
-        fn negamax(&mut self, depth: usize) -> (Move, i64);
+        fn negamax(&mut self, depth: usize, alpha: i64, beta: i64) -> (Move, i64);
     }
 
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> SearchResult {
-            let (m, eval) = self.negamax(options.depth.unwrap_or(usize::MAX));
+            let (m, eval) = self.negamax(options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
             result!(m, -eval, options.depth.unwrap_or(usize::MAX) as u64)
         }
 
-        fn order_moves(&self, moves: &mut Vec<Move>) {
+        fn order_moves(&mut self, moves: &mut Vec<Move>) {
+            let side = self.side_to_move();
+            let opponent = if side == WHITE { BLACK } else { WHITE };
             let mut rng = rand::thread_rng();
             moves.shuffle(&mut rng);
+            let attacks = self.get_attacks(side);
+            moves.sort_by(|x, y| {
+                match (1u64 << x.get_to()) & attacks == 0 && (1u64 << y.get_to()) & attacks != 0 {
+                    true => std::cmp::Ordering::Less,
+                    false => std::cmp::Ordering::Greater,
+                }
+            })
         }
 
         fn eval(&mut self) -> i64 {
@@ -88,7 +97,7 @@ mod pimpl {
             score
         }
 
-        fn negamax(&mut self, depth: usize) -> (Move, i64) {
+        fn negamax(&mut self, depth: usize, mut alpha: i64, beta: i64) -> (Move, i64) {
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
@@ -117,13 +126,23 @@ mod pimpl {
 
             for m in moves {
                 self.make_move(m.clone());
-                let (_, mut score) = self.negamax(depth - 1);
+                let (_, mut score) = self.negamax(depth - 1, -beta, -alpha);
+                self.unmake_move();
+
                 score = -score;
+
                 if score > best_eval {
                     best = m;
                     best_eval = score;
+
+                    if score > alpha {
+                        alpha = score;
+                    }
                 }
-                self.unmake_move();
+
+                if score >= beta {
+                    return (best, best_eval);
+                }
             }
 
             (best, best_eval)
