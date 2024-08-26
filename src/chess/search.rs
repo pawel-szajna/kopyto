@@ -148,7 +148,6 @@ mod pimpl {
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use crate::chess::transpositions::Score::{Exact, LowerBound, UpperBound};
-    use crate::chess::transpositions::Transpositions;
 
     const NULL_MOVE: Move = Move::new();
 
@@ -169,7 +168,6 @@ mod pimpl {
 
         fn order_moves(&mut self, moves: &mut Vec<Move>) {
             let side = self.side_to_move();
-            let opponent = if side == WHITE { BLACK } else { WHITE };
             let mut rng = rand::thread_rng();
             moves.shuffle(&mut rng);
             let attacks = self.get_attacks(side);

@@ -210,6 +210,7 @@ impl Board {
             }
         }
 
+        board.update_hash();
         board
     }
 
@@ -242,6 +243,7 @@ impl Board {
             board.put_pawn(BLACK, coords_to_mask(file, 6));
         }
 
+        board.update_hash();
         board
     }
 

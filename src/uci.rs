@@ -7,11 +7,12 @@ use std::io::BufRead;
 
 pub struct UCI {
     board: Board,
+    last_position: String,
 }
 
 impl UCI {
     pub fn new() -> Self {
-        Self { board: Board::new() }
+        Self { board: Board::new(), last_position: String::new() }
     }
 
     pub fn run(&mut self) {
@@ -51,6 +52,7 @@ impl UCI {
         match moves {
             None => {}
             Some(str) if str.trim().is_empty() => {}
+            Some(str) if str.trim().starts_with("moves ") => self.position_moves(str.trim().strip_prefix("moves ")),
             Some(moves) => {
                 let space = moves.find(" ");
                 let first_move = if space.is_some() {
@@ -70,10 +72,16 @@ impl UCI {
             None => println!("info string invalid position request"),
             Some(cmd) => match cmd {
                 cmd if cmd.starts_with("startpos") => {
-                    self.board = Board::from_starting_position();
-                    if cmd.starts_with("startpos moves ") {
-                        self.position_moves(cmd.strip_prefix("startpos moves "));
+                    if !self.last_position.is_empty() && cmd.starts_with(self.last_position.as_str()) {
+                        let remainder = cmd.strip_prefix(self.last_position.as_str());
+                        self.position_moves(remainder);
+                    } else {
+                        self.board = Board::from_starting_position();
+                        if cmd.starts_with("startpos moves ") {
+                            self.position_moves(cmd.strip_prefix("startpos moves "));
+                        }
                     }
+                    self.last_position = String::from(cmd);
                 }
                 cmd if cmd.starts_with("fen ") => {
                     let moves = cmd.find(" moves ");

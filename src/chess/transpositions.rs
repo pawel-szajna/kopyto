@@ -114,7 +114,7 @@ impl Zobrist {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Score {
     Exact(i64),
     LowerBound(i64),
@@ -140,17 +140,29 @@ impl Entry {
     }
 }
 
-const TRANSPOSITION_TABLE_SIZE: usize = 2 * 1024 * 1024;
+const TRANSPOSITION_TABLE_SIZE: usize = 16 * 1024 * 1024;
 const TRANSPOSITION_TABLE_LENGTH: usize = TRANSPOSITION_TABLE_SIZE / size_of::<Entry>();
 
 pub struct Transpositions {
-    scores: Box<[Entry; TRANSPOSITION_TABLE_LENGTH]>,
+    scores: Box<[Entry]>,
+}
+
+impl Drop for Transpositions {
+    fn drop(&mut self) {
+        let elems = self.scores.iter().filter(|e| e.hash != 0).count();
+        println!("info string transposition table usage: {}/{} ({}%, {:.2}/{:.2} MB)",
+                 elems,
+                 TRANSPOSITION_TABLE_LENGTH,
+                 elems * 100 / TRANSPOSITION_TABLE_LENGTH,
+                 ((elems * size_of::<Entry>()) as f64) / 1048576.0,
+                 TRANSPOSITION_TABLE_SIZE as f64 / 1048576.0);
+    }
 }
 
 impl Transpositions {
     pub fn new() -> Self {
         Self {
-            scores: Box::new([Entry::new(); TRANSPOSITION_TABLE_LENGTH]),
+            scores: vec![Entry::new(); TRANSPOSITION_TABLE_LENGTH].into_boxed_slice(),
         }
     }
 
