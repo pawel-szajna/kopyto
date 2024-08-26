@@ -52,6 +52,7 @@ impl UCI {
         match moves {
             None => {}
             Some(str) if str.trim().is_empty() => {}
+            Some(str) if str.starts_with(" ") => self.position_moves(Some(str.trim())),
             Some(str) if str.trim().starts_with("moves ") => self.position_moves(str.trim().strip_prefix("moves ")),
             Some(moves) => {
                 let space = moves.find(" ");
