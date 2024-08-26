@@ -1,4 +1,4 @@
-use crate::chess::transpositions::Zobrist;
+use crate::chess::transpositions::{Transpositions, Zobrist};
 use super::masks;
 use super::moves::*;
 use super::moves_generation::MoveGenerator;
@@ -65,6 +65,7 @@ pub struct Board {
 
     history: Vec<History>,
     zobrist: Zobrist,
+    pub(super) transpositions: Transpositions,
     hash: u64,
 
     half_moves_clock: u32,
@@ -96,6 +97,7 @@ impl Board {
 
             history: Vec::new(),
             zobrist: Zobrist::new(),
+            transpositions: Transpositions::new(),
             hash: 0,
 
             half_moves_clock: 0,

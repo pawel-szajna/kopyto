@@ -20,7 +20,7 @@ pub enum Promotion {
     Knight = 3,
 }
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
 pub struct Move {
     m: u16,
 }

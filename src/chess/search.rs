@@ -147,6 +147,8 @@ mod pimpl {
     use crate::chess::board::{BLACK, WHITE};
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
+    use crate::chess::transpositions::Score::{Exact, LowerBound, UpperBound};
+    use crate::chess::transpositions::Transpositions;
 
     const NULL_MOVE: Move = Move::new();
 
@@ -208,6 +210,12 @@ mod pimpl {
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
+            let key = self.key();
+            match self.transpositions.get(key, depth, alpha, beta) {
+                Some((score, m)) => return (m, score),
+                None => (),
+            }
+
             if depth == 0 {
                 return (NULL_MOVE, self.eval() * multiplier);
             }
@@ -231,9 +239,13 @@ mod pimpl {
 
             self.order_moves(&mut moves);
 
+            let mut found_exact = false;
+            let mut best_move = 0;
+
             for m in moves {
                 self.make_move(m.clone());
                 let (_, mut score) = self.negamax(depth - 1, -beta, -alpha);
+                let key = self.key();
                 self.unmake_move();
 
                 score = -score;
@@ -243,14 +255,19 @@ mod pimpl {
                     best_eval = score;
 
                     if score > alpha {
+                        found_exact = true;
+                        best_move = key;
                         alpha = score;
                     }
                 }
 
                 if score >= beta {
+                    self.transpositions.set(key, depth, LowerBound(beta), m);
                     return (best, best_eval);
                 }
             }
+
+            self.transpositions.set(key, depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
 
             (best, best_eval)
         }

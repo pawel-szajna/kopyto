@@ -1,5 +1,6 @@
 use rand::RngCore;
 use crate::chess::board::{BLACK, Board, WHITE};
+use crate::chess::moves::Move;
 
 type SideKeys = [u64; 64];
 type PieceKeys = [SideKeys; 2];
@@ -110,5 +111,69 @@ impl Zobrist {
         }
 
         key
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Score {
+    Exact(i64),
+    LowerBound(i64),
+    UpperBound(i64),
+}
+
+#[derive(Clone, Copy)]
+struct Entry {
+    hash: u64,
+    depth: usize,
+    score: Score,
+    m: Move,
+}
+
+impl Entry {
+    fn new() -> Self {
+        Self {
+            hash: 0,
+            depth: 0,
+            score: Score::Exact(0),
+            m: Move::new(),
+        }
+    }
+}
+
+const TRANSPOSITION_TABLE_SIZE: usize = 2 * 1024 * 1024;
+const TRANSPOSITION_TABLE_LENGTH: usize = TRANSPOSITION_TABLE_SIZE / size_of::<Entry>();
+
+pub struct Transpositions {
+    scores: Box<[Entry; TRANSPOSITION_TABLE_LENGTH]>,
+}
+
+impl Transpositions {
+    pub fn new() -> Self {
+        Self {
+            scores: Box::new([Entry::new(); TRANSPOSITION_TABLE_LENGTH]),
+        }
+    }
+
+    pub fn get(&self, hash: u64, depth: usize, alpha: i64, beta: i64) -> Option<(i64, Move)> {
+        let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
+        if entry.hash != hash {
+            return None;
+        }
+
+        match entry.score {
+            Score::Exact(score) => Some((score, entry.m)),
+            Score::LowerBound(score) if score <= alpha => Some((score, entry.m)),
+            Score::UpperBound(score) if score >= beta => Some((score, entry.m)),
+            _ => None,
+        }
+    }
+
+    pub fn set(&mut self, hash: u64, depth: usize, score: Score, m: Move) {
+        self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH] = Entry {
+            hash,
+            depth,
+            score,
+            m,
+        }
     }
 }
