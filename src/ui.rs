@@ -133,6 +133,15 @@ impl UI {
                 eprintln!("Black is checkmated: {:?}", self.board.in_checkmate(board::BLACK));
             }
 
+            if rl.is_key_pressed(KeyboardKey::KEY_C) {
+                let fen = self.board.export_fen();
+                if rl.set_clipboard_text(fen.as_str()).is_err() {
+                    eprintln!("Could not set clipboard text");
+                } else {
+                    eprintln!("Exported position: {}", fen);
+                }
+            }
+
             {
                 let mut d = rl.begin_drawing(&thread);
 
