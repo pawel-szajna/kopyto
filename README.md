@@ -14,8 +14,8 @@ To use it as an engine, launch it from command line with `uci` parameter.
 
 | Version (tag)          | Features                                                               | Score vs. previous (W–D–L, win %) |
 | ---------------------- | ---------------------------------------------------------------------- | --------------------------------- |
+| `v4_weighteval`        | weights for pieces position during evaluation                          | 157–69–30 (61.3%)                 |
 | `v3_alphabeta`         | alpha-beta pruning, general speed optimizations, deeper search         | 382–10–8 (95.5%)                  |
 | `v2_negamax`           | searches (shallowly and slowly) the game tree                          | 984–10–6 (98.4%)                  |
 | `v1_simplest`          | selects the move (without search) with simple evaluation               | 910–87–3 (91.0%)                  |
 | `v0_random`            | move generation is working, "search" by random move                    | N/A                               |
-
