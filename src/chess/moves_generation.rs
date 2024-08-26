@@ -99,59 +99,85 @@ mod pimpl {
     }
 
     pub trait MoveGenerator {
+        fn generate_piece<F>(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64, f: F)
+        where
+            F: Fn(&Self, &mut Vec<Move>, &mut u64, Side, u64);
         fn generate_moves_impl(&mut self, side: Side) -> Moves;
         fn generate_moves_for_impl(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
 
-        fn generate_mask_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64, targets: &[u64; 64]);
+        fn generate_mask_moves(
+            &self,
+            moves: &mut Vec<Move>,
+            attacks: &mut u64,
+            side: Side,
+            mask: u64,
+            targets: &[u64; 64],
+        );
 
-        fn generate_pawn_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_knight_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_king_moves(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_rook_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_bishop_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_queen_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_pawn(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_knight(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_king(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_rook(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_bishop(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_queen(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
     }
 
     impl MoveGenerator for Board {
         fn generate_moves_impl(&mut self, side: Side) -> Moves {
             if self.moves[side].is_some() && self.attacks[side].is_some() {
-                return (
-                    self.moves[side].clone().unwrap(),
-                    self.attacks[side].unwrap(),
-                );
+                return (self.moves[side].clone().unwrap(), self.attacks[side].unwrap());
             }
-            let mut result = Vec::with_capacity(64);
-            let mut all_pieces = self.occupied[side];
-            let mut all_attacks = 0u64;
-            while all_pieces != 0 {
-                let extracted = 1u64 << all_pieces.trailing_zeros();
-                self.generate_moves_for_impl(&mut result, &mut all_attacks, side, extracted);
-                all_pieces ^= extracted;
+            let mut moves = Vec::with_capacity(64);
+            let mut attacks = 0u64;
+            self.generate_piece(&mut moves, &mut attacks, side, self.pawns[side], Self::generate_pawn);
+            self.generate_piece(&mut moves, &mut attacks, side, self.rooks[side], Self::generate_rook);
+            self.generate_piece(&mut moves, &mut attacks, side, self.bishops[side], Self::generate_bishop);
+            self.generate_piece(&mut moves, &mut attacks, side, self.queens[side], Self::generate_queen);
+            self.generate_piece(&mut moves, &mut attacks, side, self.knights[side], Self::generate_knight);
+            self.generate_king(&mut moves, &mut attacks, side, self.kings[side]);
+
+            (moves, attacks)
+        }
+
+        fn generate_piece<F>(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mut mask: u64, f: F)
+        where
+            F: Fn(&Self, &mut Vec<Move>, &mut u64, Side, u64),
+        {
+            while mask != 0 {
+                let extracted = 1u64 << mask.trailing_zeros();
+                f(self, moves, attacks, side, extracted);
+                mask ^= extracted;
             }
-            (result, all_attacks)
         }
 
         fn generate_moves_for_impl(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             match self.check_piece(side, mask) {
                 None => (),
                 Some(piece) => match piece {
-                    Piece::Pawn => self.generate_pawn_moves(moves, attacks, side, mask),
-                    Piece::Knight => self.generate_knight_moves(moves, attacks, side, mask),
-                    Piece::King => self.generate_king_moves(moves, attacks, side, mask),
-                    Piece::Rook => self.generate_rook_moves(moves, attacks, side, mask),
-                    Piece::Bishop => self.generate_bishop_moves(moves, attacks, side, mask),
-                    Piece::Queen => self.generate_queen_moves(moves, attacks, side, mask),
+                    Piece::Pawn => self.generate_pawn(moves, attacks, side, mask),
+                    Piece::Knight => self.generate_knight(moves, attacks, side, mask),
+                    Piece::King => self.generate_king(moves, attacks, side, mask),
+                    Piece::Rook => self.generate_rook(moves, attacks, side, mask),
+                    Piece::Bishop => self.generate_bishop(moves, attacks, side, mask),
+                    Piece::Queen => self.generate_queen(moves, attacks, side, mask),
                 },
             }
         }
 
-        fn generate_mask_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64, targets: &[u64; 64]) {
+        fn generate_mask_moves(
+            &self,
+            moves: &mut Vec<Move>,
+            attacks: &mut u64,
+            side: Side,
+            mask: u64,
+            targets: &[u64; 64],
+        ) {
             let moves_mask = targets[mask.trailing_zeros() as usize] & !self.occupied[side];
             extract_mask_to_moves(mask, moves_mask, moves);
             *attacks |= moves_mask;
         }
 
-        fn generate_pawn_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
+        fn generate_pawn(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             let basic_direction = if side == WHITE { mask << 8 } else { mask >> 8 };
             let blockade = self.has_piece(basic_direction);
             let mut pawn_moves = Vec::with_capacity(3);
@@ -179,47 +205,37 @@ mod pimpl {
             }
 
             if masks::RANKS_RELATIVE[6][side] & mask != 0 {
-                moves.append(&mut pawn_moves
-                    .into_iter()
-                    .flat_map(|m| {
-                        std::iter::repeat(m)
-                            .take(4)
-                            .zip([
-                                Promotion::Queen,
-                                Promotion::Rook,
-                                Promotion::Bishop,
-                                Promotion::Knight,
-                            ])
-                            .map(|(m, p)| {
-                                let mut m = m.clone();
-                                m.set_promotion(p);
-                                m
-                            })
-                    })
-                    .collect());
+                moves.append(
+                    &mut pawn_moves
+                        .into_iter()
+                        .flat_map(|m| {
+                            std::iter::repeat(m)
+                                .take(4)
+                                .zip([Promotion::Queen, Promotion::Rook, Promotion::Bishop, Promotion::Knight])
+                                .map(|(m, p)| {
+                                    let mut m = m.clone();
+                                    m.set_promotion(p);
+                                    m
+                                })
+                        })
+                        .collect(),
+                );
             } else {
                 moves.append(&mut pawn_moves);
             }
 
-            let double_move_target = if side == WHITE {
-                mask << 16
-            } else {
-                mask >> 16
-            };
+            let double_move_target = if side == WHITE { mask << 16 } else { mask >> 16 };
 
-            if !blockade
-                && masks::RANKS_RELATIVE[1][side] & mask != 0
-                && !self.has_piece(double_move_target)
-            {
+            if !blockade && masks::RANKS_RELATIVE[1][side] & mask != 0 && !self.has_piece(double_move_target) {
                 moves.push(Move::from_mask(mask, double_move_target));
             }
         }
 
-        fn generate_knight_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
+        fn generate_knight(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             self.generate_mask_moves(moves, attacks, side, mask, &masks::KNIGHT_TARGETS);
         }
 
-        fn generate_king_moves(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
+        fn generate_king(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             self.generate_mask_moves(moves, attacks, side, mask, &masks::KING_TARGETS);
 
             if self.can_castle_kingside(side) {
@@ -230,10 +246,10 @@ mod pimpl {
             }
         }
 
-        fn generate_rook_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
+        fn generate_rook(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             let opponent = if side == WHITE { BLACK } else { WHITE };
 
-            let mut attacked_squares = 0u64;
+            let mut attacked = 0u64;
 
             let idx = mask.trailing_zeros() as usize;
             let file = idx % 8;
@@ -245,7 +261,7 @@ mod pimpl {
                 masks::RANKS[rank] & !masks::FILES[0],
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
             collect_sliders(
                 mask,
@@ -253,7 +269,7 @@ mod pimpl {
                 masks::RANKS[rank] & !masks::FILES[7],
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
             collect_sliders(
                 mask,
@@ -261,7 +277,7 @@ mod pimpl {
                 masks::FILES[file] & !masks::RANKS[7],
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
             collect_sliders(
                 mask,
@@ -269,17 +285,17 @@ mod pimpl {
                 masks::FILES[file] & !masks::RANKS[0],
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
 
-            *attacks |= attacked_squares;
-            extract_mask_to_moves(mask, attacked_squares, moves);
+            *attacks |= attacked;
+            extract_mask_to_moves(mask, attacked, moves);
         }
 
-        fn generate_bishop_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
+        fn generate_bishop(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             let opponent = if side == WHITE { BLACK } else { WHITE };
 
-            let mut attacked_squares = 0u64;
+            let mut attacked = 0u64;
 
             collect_sliders(
                 mask,
@@ -287,7 +303,7 @@ mod pimpl {
                 !(masks::RANKS[0] | masks::FILES[7]),
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
             collect_sliders(
                 mask,
@@ -295,7 +311,7 @@ mod pimpl {
                 !(masks::RANKS[0] | masks::FILES[0]),
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
             collect_sliders(
                 mask,
@@ -303,7 +319,7 @@ mod pimpl {
                 !(masks::RANKS[7] | masks::FILES[0]),
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
             collect_sliders(
                 mask,
@@ -311,16 +327,16 @@ mod pimpl {
                 !(masks::RANKS[7] | masks::FILES[7]),
                 self.occupied[side],
                 self.occupied[opponent],
-                &mut attacked_squares,
+                &mut attacked,
             );
 
-            *attacks |= attacked_squares;
-            extract_mask_to_moves(mask, attacked_squares, moves);
+            *attacks |= attacked;
+            extract_mask_to_moves(mask, attacked, moves);
         }
 
-        fn generate_queen_moves(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            self.generate_rook_moves(moves, attacks, side, mask);
-            self.generate_bishop_moves(moves, attacks, side, mask);
+        fn generate_queen(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
+            self.generate_rook(moves, attacks, side, mask);
+            self.generate_bishop(moves, attacks, side, mask);
         }
     }
 }
@@ -361,11 +377,7 @@ mod tests {
         }
 
         fn perft_initial(depth: usize, expected: u64) {
-            perft_run(
-                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-                depth,
-                expected,
-            );
+            perft_run("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", depth, expected);
         }
 
         #[test]
@@ -399,11 +411,7 @@ mod tests {
         }
 
         fn perft_kiwipete(depth: usize, expected: u64) {
-            perft_run(
-                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0",
-                depth,
-                expected,
-            );
+            perft_run("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0", depth, expected);
         }
 
         #[test]
@@ -456,11 +464,7 @@ mod tests {
         }
 
         fn perft_pos5(depth: usize, expected: u64) {
-            perft_run(
-                "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
-                depth,
-                expected,
-            );
+            perft_run("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", depth, expected);
         }
 
         #[test]
@@ -495,12 +499,7 @@ mod tests {
                 1,
                 vec![a_move!("c2", "c3"), a_move!("c2", "c4")],
             );
-            piece_move_generation_test(
-                "4k3/2p5/8/8/8/3P4/2P5/7K w - - 0 1",
-                3,
-                2,
-                vec![a_move!("d3", "d4")],
-            );
+            piece_move_generation_test("4k3/2p5/8/8/8/3P4/2P5/7K w - - 0 1", 3, 2, vec![a_move!("d3", "d4")]);
             piece_move_generation_test(
                 "4k3/2p5/8/8/8/3P4/2P5/7K b - - 0 1",
                 2,
@@ -511,24 +510,9 @@ mod tests {
 
         #[test]
         fn blockade() {
-            piece_move_generation_test(
-                "rnbqk1nr/ppp1pppp/8/4b3/4P3/3p3R/PPPP1PPP/RNBQKBN1 w Qkq - 0 1",
-                4,
-                3,
-                vec![],
-            );
-            piece_move_generation_test(
-                "rnbqk1nr/ppp1pppp/8/4b3/4P3/3p3R/PPPP1PPP/RNBQKBN1 w Qkq - 0 1",
-                3,
-                1,
-                vec![],
-            );
-            piece_move_generation_test(
-                "rnbqk1nr/ppp1pppp/8/4b3/4P3/3p3R/PPPP1PPP/RNBQKBN1 w Qkq - 0 1",
-                7,
-                1,
-                vec![],
-            );
+            piece_move_generation_test("rnbqk1nr/ppp1pppp/8/4b3/4P3/3p3R/PPPP1PPP/RNBQKBN1 w Qkq - 0 1", 4, 3, vec![]);
+            piece_move_generation_test("rnbqk1nr/ppp1pppp/8/4b3/4P3/3p3R/PPPP1PPP/RNBQKBN1 w Qkq - 0 1", 3, 1, vec![]);
+            piece_move_generation_test("rnbqk1nr/ppp1pppp/8/4b3/4P3/3p3R/PPPP1PPP/RNBQKBN1 w Qkq - 0 1", 7, 1, vec![]);
         }
 
         #[test]
@@ -543,11 +527,7 @@ mod tests {
                 "rnbqk2r/pppppppp/8/3n1b2/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1",
                 4,
                 3,
-                vec![
-                    a_move!("e4", "d5"),
-                    a_move!("e4", "e5"),
-                    a_move!("e4", "f5"),
-                ],
+                vec![a_move!("e4", "d5"), a_move!("e4", "e5"), a_move!("e4", "f5")],
             );
             piece_move_generation_test(
                 "rnbqk2r/pppppppp/8/3nRb2/4P3/8/PPPP1PPP/RNBQKBN1 w Qkq - 0 1",
@@ -555,12 +535,7 @@ mod tests {
                 3,
                 vec![a_move!("e4", "d5"), a_move!("e4", "f5")],
             );
-            piece_move_generation_test(
-                "rnbqk2r/pppp1ppp/4p3/3nRP2/4P3/8/PPPP2PP/RNBQKBN1 b Qkq - 0 1",
-                4,
-                5,
-                vec![],
-            );
+            piece_move_generation_test("rnbqk2r/pppp1ppp/4p3/3nRP2/4P3/8/PPPP2PP/RNBQKBN1 b Qkq - 0 1", 4, 5, vec![]);
             piece_move_generation_test(
                 "rnbqk2r/pppp2pp/7R/Pp5p/P6n/8/PPPP2PP/RNBQKBN1 w Qkq - 0 1",
                 0,
@@ -578,7 +553,7 @@ mod tests {
         #[test]
         fn promotions() {
             piece_move_generation_test(
-                "8/3P4/8/8/8/8/8/8 w - - 0 1",
+                "8/3P4/8/8/8/8/8/k6K w - - 0 1",
                 3,
                 6,
                 vec![
@@ -652,11 +627,7 @@ mod tests {
                 "7k/8/1Q1n4/8/2N5/P3P3/1P1P4/7K w - - 0 1",
                 2,
                 3,
-                vec![
-                    a_move!("c4", "d6"),
-                    a_move!("c4", "a5"),
-                    a_move!("c4", "e5"),
-                ],
+                vec![a_move!("c4", "d6"), a_move!("c4", "a5"), a_move!("c4", "e5")],
             );
             piece_move_generation_test(
                 "7k/8/1Q1n4/8/2N5/P3P3/1P1P4/7K b - - 0 1",
@@ -698,11 +669,7 @@ mod tests {
                 "rnbqkbnr/1ppppppp/p7/8/8/7N/PPPPPPPP/RNBQKB1R w KQkq - 0 2",
                 7,
                 2,
-                vec![
-                    a_move!("h3", "g5"),
-                    a_move!("h3", "f4"),
-                    a_move!("h3", "g1"),
-                ],
+                vec![a_move!("h3", "g5"), a_move!("h3", "f4"), a_move!("h3", "g1")],
             );
         }
     }
@@ -743,11 +710,7 @@ mod tests {
                 "7k/p7/8/8/8/8/8/K7 w - - 4 3",
                 0,
                 0,
-                vec![
-                    a_move!("a1", "a2"),
-                    a_move!("a1", "b2"),
-                    a_move!("a1", "b1"),
-                ],
+                vec![a_move!("a1", "a2"), a_move!("a1", "b2"), a_move!("a1", "b1")],
             );
         }
 
@@ -768,21 +731,13 @@ mod tests {
                 "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Qkq - 0 1",
                 4,
                 0,
-                vec![
-                    a_move!("e1", "d1"),
-                    a_move!("e1", "f1"),
-                    a_move!("e1", "c1"),
-                ],
+                vec![a_move!("e1", "d1"), a_move!("e1", "f1"), a_move!("e1", "c1")],
             );
             piece_move_generation_test(
                 "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Kkq - 0 1",
                 4,
                 0,
-                vec![
-                    a_move!("e1", "d1"),
-                    a_move!("e1", "f1"),
-                    a_move!("e1", "g1"),
-                ],
+                vec![a_move!("e1", "d1"), a_move!("e1", "f1"), a_move!("e1", "g1")],
             );
             piece_move_generation_test(
                 "rn2kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w q - 0 1",
