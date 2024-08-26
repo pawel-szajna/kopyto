@@ -1,3 +1,4 @@
+use crate::chess::transpositions::Zobrist;
 use super::masks;
 use super::moves::*;
 use super::moves_generation::MoveGenerator;
@@ -63,6 +64,8 @@ pub struct Board {
     current_color: Side,
 
     history: Vec<History>,
+    zobrist: Zobrist,
+    hash: u64,
 
     half_moves_clock: u32,
     full_moves_count: u32,
@@ -92,6 +95,8 @@ impl Board {
             current_color: WHITE,
 
             history: Vec::new(),
+            zobrist: Zobrist::new(),
+            hash: 0,
 
             half_moves_clock: 0,
             full_moves_count: 1,
@@ -530,6 +535,10 @@ impl Board {
         panic!("Internal error: there should be something on {:066b}", mask);
     }
 
+    pub fn key(&self) -> u64 {
+        self.hash
+    }
+
     fn check_side(&self, mask: u64) -> Side {
         if (self.occupied[WHITE] & mask) != 0 {
             return WHITE;
@@ -561,6 +570,12 @@ impl Board {
             && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
             && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
             && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side]) & attacks == 0
+    }
+
+    fn update_hash(&mut self) {
+        let castle_kingside = [self.can_castle_kingside(WHITE), self.can_castle_kingside(BLACK)];
+        let castle_queenside = [self.can_castle_queenside(WHITE), self.can_castle_queenside(BLACK)];
+        self.hash = self.zobrist.key(self, castle_kingside, castle_queenside);
     }
 
     pub fn make_move(&mut self, m: Move) {
@@ -650,6 +665,7 @@ impl Board {
         self.check = [None, None];
         self.attacks = [None, None];
         self.moves = [None, None];
+        self.update_hash();
     }
 
     pub fn unmake_move(&mut self) {
@@ -714,6 +730,7 @@ impl Board {
         self.check = [None, None];
         self.attacks = last_move.attacks;
         self.moves = [None, None];
+        self.update_hash();
     }
 
     pub fn last_move(&self) -> Option<(u64, u64)> {

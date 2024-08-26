@@ -142,6 +142,10 @@ impl UI {
                 }
             }
 
+            if rl.is_key_pressed(KeyboardKey::KEY_Z) {
+                eprintln!("Board hash: {:#018x}", self.board.key());
+            }
+
             {
                 let mut d = rl.begin_drawing(&thread);
 
