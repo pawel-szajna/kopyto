@@ -460,6 +460,7 @@ impl Board {
     fn update_hash(&mut self) {
         let castle_kingside = [self.can_castle_kingside(WHITE), self.can_castle_kingside(BLACK)];
         let castle_queenside = [self.can_castle_queenside(WHITE), self.can_castle_queenside(BLACK)];
+        self.moves = [None, None];
         self.hash = self.zobrist.key(self, castle_kingside, castle_queenside);
     }
 
