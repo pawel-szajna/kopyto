@@ -127,9 +127,7 @@ impl UCI {
             let depth = cmd.unwrap().to_string().parse::<usize>();
             match depth {
                 Err(what) => panic!("cannot parse: {}", what.to_string()),
-                Ok(depth) => {
-                    println!("\nNodes searched: {}", perft(&mut self.board, depth, true));
-                }
+                Ok(depth) => { perft(&mut self.board, depth); },
             }
             return;
         }

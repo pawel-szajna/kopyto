@@ -1,3 +1,4 @@
+use std::time::SystemTime;
 use super::board::{Board, Side, BLACK, WHITE};
 use super::masks;
 use super::moves::{Move, Promotion};
@@ -46,7 +47,16 @@ impl MoveGenerator for Board {
     }
 }
 
-pub fn perft(board: &mut Board, depth: usize, init: bool) -> u64 {
+pub fn perft(board: &mut Board, depth: usize) -> u64 {
+    let start = SystemTime::now();
+    let nodes = perft_impl(board, depth, true);
+    let time_taken = start.elapsed().unwrap();
+    let nps = 1000000000 * nodes as u128 / time_taken.as_nanos();
+    println!("depth {} nodes {} time {} nps {}", depth, nodes, time_taken.as_millis(), nps);
+    nodes
+}
+
+fn perft_impl(board: &mut Board, depth: usize, init: bool) -> u64 {
     if depth == 0 {
         return 1;
     }
@@ -57,7 +67,7 @@ pub fn perft(board: &mut Board, depth: usize, init: bool) -> u64 {
     for m in &moves {
         board.make_move(m.clone());
         if !board.in_check(side) {
-            let res = perft(board, depth - 1, false);
+            let res = perft_impl(board, depth - 1, false);
             if init {
                 println!("{:?}: {}", m, res);
             }
@@ -392,7 +402,7 @@ mod tests {
 
         fn perft_run(fen: &str, depth: usize, expected: u64) {
             let mut board = Board::from_fen(fen);
-            assert_eq!(perft(&mut board, depth, true), expected);
+            assert_eq!(perft(&mut board, depth), expected);
         }
 
         fn perft_initial(depth: usize, expected: u64) {
