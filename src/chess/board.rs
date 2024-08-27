@@ -71,8 +71,8 @@ pub struct Board {
     pub(super) transpositions: Transpositions,
     hash: u64,
 
-    half_moves_clock: u32,
-    full_moves_count: u32,
+    pub(super) half_moves_clock: u32,
+    pub(super) full_moves_count: u32,
 
     pub(super) en_passant: u64,
     check: [Option<bool>; 2],
@@ -742,7 +742,7 @@ impl Board {
     }
 
     pub fn triple_repetition(&self) -> bool {
-        self.history.iter().filter(|h| h.hash == self.hash).count() > 2
+        self.history.iter().filter(|h| h.hash == self.hash).count() > 1
     }
 
     pub fn last_move(&self) -> Option<(u64, u64)> {

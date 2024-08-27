@@ -235,6 +235,10 @@ mod pimpl {
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
+            if self.triple_repetition() || self.half_moves_clock >= 100 {
+                return 0;
+            }
+
             let key = self.key();
             match self.transpositions.get(key, depth, alpha, beta) {
                 None => (),
@@ -244,10 +248,6 @@ mod pimpl {
                     }
                     return score;
                 },
-            }
-
-            if self.triple_repetition() {
-                return 0;
             }
 
             if depth == 0 {
