@@ -181,11 +181,14 @@ impl Transpositions {
     }
 
     pub fn set(&mut self, hash: u64, depth: usize, score: Score, m: Move) {
-        self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH] = Entry {
-            hash,
-            depth,
-            score,
-            m,
+        let idx = hash as usize % TRANSPOSITION_TABLE_LENGTH;
+        if self.scores[idx].hash == hash && self.scores[idx].depth <= depth {
+            self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH] = Entry {
+                hash,
+                depth,
+                score,
+                m,
+            }
         }
     }
 }
