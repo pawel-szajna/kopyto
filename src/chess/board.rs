@@ -250,119 +250,7 @@ impl Board {
         board
     }
 
-    fn mask_to_symbol(&self, mask: u64) -> char {
-        const SYMBOLS_KING: [char; 2] = ['K', 'k'];
-        const SYMBOLS_QUEEN: [char; 2] = ['Q', 'q'];
-        const SYMBOLS_ROOK: [char; 2] = ['R', 'r'];
-        const SYMBOLS_BISHOP: [char; 2] = ['B', 'b'];
-        const SYMBOLS_KNIGHT: [char; 2] = ['N', 'n'];
-        const SYMBOLS_PAWN: [char; 2] = ['P', 'p'];
-
-        let side = ((self.occupied[WHITE] & mask) == 0) as usize;
-
-        if (self.kings[side] & mask) != 0 {
-            SYMBOLS_KING[side]
-        } else if (self.queens[side] & mask) != 0 {
-            SYMBOLS_QUEEN[side]
-        } else if (self.rooks[side] & mask) != 0 {
-            SYMBOLS_ROOK[side]
-        } else if (self.bishops[side] & mask) != 0 {
-            SYMBOLS_BISHOP[side]
-        } else if (self.knights[side] & mask) != 0 {
-            SYMBOLS_KNIGHT[side]
-        } else if (self.pawns[side] & mask) != 0 {
-            SYMBOLS_PAWN[side]
-        } else {
-            '!'
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn print_info(&self) {
-        println!("occupied * {0:#066b}", self.any_piece);
-        println!("occupied W {0:#066b}", self.occupied[WHITE]);
-        println!("occupied B {0:#066b}", self.occupied[BLACK]);
-        println!("king W     {0:#066b}", self.kings[WHITE]);
-        println!("king B     {0:#066b}", self.kings[BLACK]);
-        println!("queen W    {0:#066b}", self.queens[WHITE]);
-        println!("queen B    {0:#066b}", self.queens[BLACK]);
-        println!("bishop W   {0:#066b}", self.bishops[WHITE]);
-        println!("bishop B   {0:#066b}", self.bishops[BLACK]);
-        println!("knight W   {0:#066b}", self.knights[WHITE]);
-        println!("knight B   {0:#066b}", self.knights[BLACK]);
-        println!("pawn W     {0:#066b}", self.pawns[WHITE]);
-        println!("pawn B     {0:#066b}", self.pawns[BLACK]);
-    }
-
-    pub fn export_fen(&self) -> String {
-        let mut result = String::new();
-
-        for rank in 0u64..8u64 {
-            let mut empty_counter = 0;
-
-            for file in 0u64..8u64 {
-                let idx = (7 - rank) * 8 + file;
-                let mask = 1u64 << idx;
-
-                if (self.any_piece & mask) == 0 {
-                    empty_counter += 1;
-                    continue;
-                }
-
-                if empty_counter > 0 {
-                    result.push_str(format!("{}", empty_counter).as_str());
-                }
-
-                empty_counter = 0;
-                result.push(self.mask_to_symbol(mask));
-            }
-
-            if empty_counter > 0 {
-                result.push_str(format!("{}", empty_counter).as_str());
-            }
-
-            if rank != 7 {
-                result.push('/');
-            }
-        }
-
-        result.push(' ');
-        result.push(if self.current_color == WHITE { 'w' } else { 'b' });
-
-        result.push(' ');
-        if !(self.castle_kingside[WHITE]
-            || self.castle_queenside[WHITE]
-            || self.castle_kingside[BLACK]
-            || self.castle_queenside[BLACK])
-        {
-            result.push('-');
-        } else {
-            if self.castle_kingside[WHITE] {
-                result.push('K');
-            }
-            if self.castle_queenside[WHITE] {
-                result.push('Q');
-            }
-            if self.castle_kingside[BLACK] {
-                result.push('k');
-            }
-            if self.castle_queenside[BLACK] {
-                result.push('q');
-            }
-        }
-
-        result.push(' ');
-        match self.en_passant {
-            0 => result.push('-'),
-            x => result.push_str(mask_to_str(x).as_str()),
-        }
-
-        result.push_str(format!(" {}", self.half_moves_clock).as_str());
-        result.push_str(format!(" {}", self.full_moves_count).as_str());
-
-        result
-    }
-
+    #[cfg(test)]
     pub fn export_graph(&self) -> String {
         let mut result = String::new();
 
@@ -450,14 +338,7 @@ impl Board {
         self.any_piece & mask != 0
     }
 
-    pub fn has_side_piece(&self, side: Side, mask: u64) -> bool {
-        self.occupied[side] & mask != 0
-    }
-
-    pub fn en_passant(&self, mask: u64) -> bool {
-        self.en_passant == mask
-    }
-
+    #[cfg(feature = "ui")]
     pub fn check_square(&self, mask: u64) -> Option<(Side, Piece)> {
         if !self.has_piece(mask) {
             return None;
@@ -495,6 +376,7 @@ impl Board {
         }
     }
 
+    #[cfg(feature = "ui")]
     pub fn in_checkmate(&mut self, side: Side) -> bool {
         match self.in_check(side) {
             false => false,
@@ -554,10 +436,6 @@ impl Board {
             return BLACK;
         }
         panic!("Internal error: there should be something on {:066b}", mask);
-    }
-
-    pub fn make_move_str(&mut self, from: &str, to: &str) {
-        self.make_move(Move::from_str(from, to));
     }
 
     pub fn can_castle_kingside(&mut self, side: Side) -> bool {
@@ -745,12 +623,114 @@ impl Board {
         self.history.iter().filter(|h| h.hash == self.hash).count() > 1
     }
 
+    pub fn side_to_move(&self) -> Side {
+        self.current_color
+    }
+}
+
+#[cfg(feature = "ui")]
+impl Board {
     pub fn last_move(&self) -> Option<(u64, u64)> {
         self.history.last().map_or(None, |x| Some((x.from, x.to)))
     }
+}
 
-    pub fn side_to_move(&self) -> Side {
-        self.current_color
+#[cfg(any(test, feature = "ui"))]
+impl Board {
+    fn mask_to_symbol(&self, mask: u64) -> char {
+        const SYMBOLS_KING: [char; 2] = ['K', 'k'];
+        const SYMBOLS_QUEEN: [char; 2] = ['Q', 'q'];
+        const SYMBOLS_ROOK: [char; 2] = ['R', 'r'];
+        const SYMBOLS_BISHOP: [char; 2] = ['B', 'b'];
+        const SYMBOLS_KNIGHT: [char; 2] = ['N', 'n'];
+        const SYMBOLS_PAWN: [char; 2] = ['P', 'p'];
+
+        let side = ((self.occupied[WHITE] & mask) == 0) as usize;
+
+        if (self.kings[side] & mask) != 0 {
+            SYMBOLS_KING[side]
+        } else if (self.queens[side] & mask) != 0 {
+            SYMBOLS_QUEEN[side]
+        } else if (self.rooks[side] & mask) != 0 {
+            SYMBOLS_ROOK[side]
+        } else if (self.bishops[side] & mask) != 0 {
+            SYMBOLS_BISHOP[side]
+        } else if (self.knights[side] & mask) != 0 {
+            SYMBOLS_KNIGHT[side]
+        } else if (self.pawns[side] & mask) != 0 {
+            SYMBOLS_PAWN[side]
+        } else {
+            '!'
+        }
+    }
+
+    pub fn export_fen(&self) -> String {
+        let mut result = String::new();
+
+        for rank in 0u64..8u64 {
+            let mut empty_counter = 0;
+
+            for file in 0u64..8u64 {
+                let idx = (7 - rank) * 8 + file;
+                let mask = 1u64 << idx;
+
+                if (self.any_piece & mask) == 0 {
+                    empty_counter += 1;
+                    continue;
+                }
+
+                if empty_counter > 0 {
+                    result.push_str(format!("{}", empty_counter).as_str());
+                }
+
+                empty_counter = 0;
+                result.push(self.mask_to_symbol(mask));
+            }
+
+            if empty_counter > 0 {
+                result.push_str(format!("{}", empty_counter).as_str());
+            }
+
+            if rank != 7 {
+                result.push('/');
+            }
+        }
+
+        result.push(' ');
+        result.push(if self.current_color == WHITE { 'w' } else { 'b' });
+
+        result.push(' ');
+        if !(self.castle_kingside[WHITE]
+            || self.castle_queenside[WHITE]
+            || self.castle_kingside[BLACK]
+            || self.castle_queenside[BLACK])
+        {
+            result.push('-');
+        } else {
+            if self.castle_kingside[WHITE] {
+                result.push('K');
+            }
+            if self.castle_queenside[WHITE] {
+                result.push('Q');
+            }
+            if self.castle_kingside[BLACK] {
+                result.push('k');
+            }
+            if self.castle_queenside[BLACK] {
+                result.push('q');
+            }
+        }
+
+        result.push(' ');
+        match self.en_passant {
+            0 => result.push('-'),
+            x => result.push_str(mask_to_str(x).as_str()),
+        }
+
+        result.push_str(format!(" {}", self.half_moves_clock).as_str());
+        result.push_str(format!(" {}", self.full_moves_count).as_str());
+
+        result
     }
 }
 
@@ -759,6 +739,10 @@ mod tests {
     use super::*;
 
     impl Board {
+        fn make_move_str(&mut self, from: &str, to: &str) {
+            self.make_move(Move::from_str(from, to));
+        }
+
         fn assert_position(&self, fen: &str) {
             let actual = self.export_fen();
             if actual != fen {

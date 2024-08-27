@@ -8,9 +8,14 @@ pub struct SearchResult {
 }
 
 pub struct Options {
+    // TODO: remove nolints when time management is finally implemented
+    #[allow(dead_code)]
     pub white_time: u64,
+    #[allow(dead_code)]
     pub black_time: u64,
+    #[allow(dead_code)]
     pub white_increment: u64,
+    #[allow(dead_code)]
     pub black_increment: u64,
     pub depth: Option<usize>,
 }
@@ -151,7 +156,7 @@ mod pimpl {
 
     const NULL_MOVE: Move = Move::new();
 
-    struct SearchContext {
+    pub struct SearchContext {
         depth: usize,
         best_move: Move,
     }
@@ -295,7 +300,7 @@ mod pimpl {
                 }
             }
 
-            self.transpositions.set(key, depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
+            self.transpositions.set(best_move, depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
 
             alpha
         }

@@ -3,7 +3,6 @@ use crate::chess::moves::Move;
 use crate::chess::moves_generation::perft;
 use crate::chess::search;
 use crate::chess::search::Search;
-use std::io::BufRead;
 
 pub struct UCI {
     board: Board,

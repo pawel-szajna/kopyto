@@ -108,12 +108,6 @@ impl Move {
         Self::from_idx(from.trailing_zeros() as usize, to.trailing_zeros() as usize)
     }
 
-    pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
-        let mut m = Self::from_idx(from, to);
-        m.set_promotion(promotion);
-        m
-    }
-
     pub fn set_from(&mut self, from: usize) {
         self.m |= (from as u16) & Self::MASK_FROM;
     }
@@ -157,5 +151,14 @@ impl Move {
                 )
             }
         }
+    }
+}
+
+#[cfg(feature = "ui")]
+impl Move {
+    pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
+        let mut m = Self::from_idx(from, to);
+        m.set_promotion(promotion);
+        m
     }
 }

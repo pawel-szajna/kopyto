@@ -27,6 +27,7 @@ pub fn idx_to_str(idx: usize) -> String {
     result
 }
 
+#[allow(dead_code)]
 pub fn mask_to_str(mask: u64) -> String {
     idx_to_str(mask.trailing_zeros() as usize)
 }

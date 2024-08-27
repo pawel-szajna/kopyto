@@ -1,19 +1,24 @@
 use super::board::{Board, Side, BLACK, WHITE};
 use super::masks;
-use super::moves::{Move, Piece, Promotion};
+use super::moves::{Move, Promotion};
+#[cfg(any(test, feature = "ui"))]
+use super::moves::Piece;
+#[cfg(any(test, feature = "ui"))]
 use super::util;
 
 pub type Moves = (Vec<Move>, u64);
 
 pub trait MoveGenerator: pimpl::MoveGenerator {
     fn generate_moves(&mut self) -> Moves;
-    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves;
-    fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>);
-
     fn generate_side_moves(&mut self, side: Side) -> Moves {
         self.generate_moves_impl(side)
     }
 
+    fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>);
+
+    #[cfg(any(test, feature = "ui"))]
+    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves;
+    #[cfg(any(test, feature = "ui"))]
     fn generate_side_moves_for(&mut self, side: Side, file: usize, rank: usize) -> Moves {
         let mut result = (vec![], 0u64);
         self.generate_moves_for_impl(&mut result.0, &mut result.1, side, util::coords_to_mask(file, rank));
@@ -26,10 +31,6 @@ impl MoveGenerator for Board {
         self.generate_side_moves(self.side_to_move())
     }
 
-    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves {
-        self.generate_side_moves_for(self.side_to_move(), file, rank)
-    }
-
     fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>) {
         moves.retain(|m| {
             self.make_move(m.clone());
@@ -37,6 +38,11 @@ impl MoveGenerator for Board {
             self.unmake_move();
             retain
         });
+    }
+
+    #[cfg(any(test, feature = "ui"))]
+    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves {
+        self.generate_side_moves_for(self.side_to_move(), file, rank)
     }
 }
 
@@ -103,6 +109,8 @@ mod pimpl {
         where
             F: Fn(&Self, &mut Vec<Move>, &mut u64, Side, u64);
         fn generate_moves_impl(&mut self, side: Side) -> Moves;
+
+        #[cfg(any(test, feature = "ui"))]
         fn generate_moves_for_impl(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
 
         fn generate_mask_moves(
@@ -152,6 +160,7 @@ mod pimpl {
             }
         }
 
+        #[cfg(any(test, feature = "ui"))]
         fn generate_moves_for_impl(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
             match self.check_piece(side, mask) {
                 None => (),
