@@ -264,7 +264,7 @@ mod pimpl {
 
             if moves.is_empty() {
                 return if self.in_check(self.side_to_move()) {
-                    -multiplier * 1000000 // checkmate
+                    -(10000 - (context.depth as i64 - depth as i64)) // checkmate in N moves
                 } else {
                     0 // stalemate
                 }

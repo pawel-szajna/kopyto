@@ -141,8 +141,8 @@ impl UCI {
         println!(
             "info depth {} score {}",
             result.depth,
-            if result.score.abs() == i64::MAX {
-                String::from("mate 1")
+            if result.score.abs() > 9000 {
+                format!("mate {}", result.score.signum() * (1 + (10000 - result.score.abs())) / 2)
             } else {
                 format!("cp {}", result.score)
             }
