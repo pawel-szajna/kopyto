@@ -376,7 +376,6 @@ impl Board {
         }
     }
 
-    #[cfg(feature = "ui")]
     pub fn in_checkmate(&mut self, side: Side) -> bool {
         match self.in_check(side) {
             false => false,

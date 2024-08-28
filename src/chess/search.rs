@@ -122,7 +122,7 @@ impl Options {
             black_time: u64::MAX,
             white_increment: 0,
             black_increment: 0,
-            depth: Some(4),
+            depth: Some(2),
         }
     }
 }
@@ -177,6 +177,7 @@ mod pimpl {
         fn eval(&self) -> i64;
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
         fn negamax(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> i64;
+        fn qsearch(&mut self, alpha: i64, beta: i64) -> i64;
     }
 
     impl SearchImpl for Board {
@@ -238,7 +239,6 @@ mod pimpl {
 
         fn negamax(&mut self, context: &mut SearchContext, depth: usize, mut alpha: i64, beta: i64) -> i64 {
             let side = self.side_to_move();
-            let multiplier = if side == WHITE { 1 } else { -1 };
 
             if self.triple_repetition() || self.half_moves_clock >= 100 {
                 return 0;
@@ -256,14 +256,14 @@ mod pimpl {
             }
 
             if depth == 0 {
-                return self.eval() * multiplier;
+                return self.qsearch(alpha, beta);
             }
 
             let (mut moves, _) = self.generate_moves();
-            self.prune_checks(self.side_to_move(), &mut moves);
+            self.prune_checks(side, &mut moves);
 
             if moves.is_empty() {
-                return if self.in_check(self.side_to_move()) {
+                return if self.in_check(side) {
                     -(10000 - (context.depth as i64 - depth as i64)) // checkmate in N moves
                 } else {
                     0 // stalemate
@@ -301,6 +301,44 @@ mod pimpl {
             }
 
             self.transpositions.set(best_move, depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
+
+            alpha
+        }
+
+        fn qsearch(&mut self, mut alpha: i64, beta: i64) -> i64 {
+            let side = self.side_to_move();
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let multiplier = if side == WHITE { 1 } else { -1 };
+
+            let score = match self.in_checkmate(side) {
+                true => -100000,
+                false => self.eval() * multiplier,
+            };
+
+            if score >= beta {
+                return beta;
+            }
+
+            if score > alpha {
+                alpha = score;
+            }
+
+            let (mut moves, _) = self.generate_moves();
+            moves.retain(|m| (1u64 << (m.get_to() as usize)) & self.occupied[opponent] != 0);
+            self.prune_checks(side, &mut moves);
+
+            for capture in moves {
+                self.make_move(capture);
+                let score = -self.qsearch(-beta, -alpha);
+                self.unmake_move();
+
+                if score >= beta {
+                    return beta;
+                }
+                if score > alpha {
+                    alpha = score;
+                }
+            }
 
             alpha
         }
