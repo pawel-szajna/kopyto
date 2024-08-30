@@ -1,25 +1,6 @@
 use crate::chess::board::Board;
 use crate::chess::moves::Move;
 
-pub struct SearchResult {
-    pub m: Move,
-    pub score: i64,
-    pub depth: u64,
-}
-
-pub struct Options {
-    // TODO: remove nolints when time management is finally implemented
-    #[allow(dead_code)]
-    pub white_time: u64,
-    #[allow(dead_code)]
-    pub black_time: u64,
-    #[allow(dead_code)]
-    pub white_increment: u64,
-    #[allow(dead_code)]
-    pub black_increment: u64,
-    pub depth: Option<usize>,
-}
-
 mod weights {
     type Weights = [i64; 64];
     type WeightsPerSide = [Weights; 2];
@@ -115,6 +96,19 @@ mod weights {
     pub const QUEEN: WeightsPerSide = double_weights!(QUEEN_BASE);
 }
 
+pub struct Options {
+    // TODO: remove nolints when time management is finally implemented
+    #[allow(dead_code)]
+    pub white_time: u64,
+    #[allow(dead_code)]
+    pub black_time: u64,
+    #[allow(dead_code)]
+    pub white_increment: u64,
+    #[allow(dead_code)]
+    pub black_increment: u64,
+    pub depth: Option<usize>,
+}
+
 impl Options {
     pub fn new() -> Self {
         Self {
@@ -127,16 +121,18 @@ impl Options {
     }
 }
 
-impl SearchResult {
-    pub fn new(m: Move, score: i64, depth: u64) -> Self {
-        Self { m, score, depth }
-    }
+pub struct SearchResult {
+    pub m: Move,
+    pub score: i64,
+    pub depth: u64,
+    pub nodes: u64,
+    pub nps: u128,
 }
 
-macro_rules! result {
-    ($m:expr,$s:expr,$d:expr) => {
-        SearchResult::new($m, $s, $d)
-    };
+impl SearchResult {
+    pub fn new(m: Move, score: i64, depth: u64, nodes: u64, nps: u128) -> Self {
+        Self { m, score, depth, nodes, nps }
+    }
 }
 
 pub trait Search: pimpl::SearchImpl {
@@ -148,6 +144,7 @@ pub trait Search: pimpl::SearchImpl {
 impl Search for Board {}
 
 mod pimpl {
+    use std::time::SystemTime;
     use super::*;
     use crate::chess::board::{BLACK, WHITE};
     use crate::chess::moves_generation::MoveGenerator;
@@ -159,6 +156,7 @@ mod pimpl {
     pub struct SearchContext {
         depth: usize,
         best_move: Move,
+        nodes: u64,
     }
 
     impl SearchContext {
@@ -166,6 +164,7 @@ mod pimpl {
             Self {
                 depth,
                 best_move: NULL_MOVE,
+                nodes: 0,
             }
         }
     }
@@ -177,23 +176,32 @@ mod pimpl {
         fn eval(&self) -> i64;
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
         fn negamax(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> i64;
-        fn qsearch(&mut self, alpha: i64, beta: i64) -> i64;
+        fn qsearch(&mut self, context: &mut SearchContext, depth_in: usize, alpha: i64, beta: i64) -> i64;
     }
 
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> SearchResult {
+            let start = SystemTime::now();
+
             let depth = options.depth.unwrap_or(usize::MAX);
-
             let mut context = SearchContext::new(depth);
-
             let eval = self.negamax(&mut context, options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
             let abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
+
+            let time_taken = start.elapsed().unwrap();
 
             if context.best_move == NULL_MOVE {
                 println!("info string null move selected as best, bug?");
             }
 
-            result!(context.best_move, abs_eval, options.depth.unwrap_or(usize::MAX) as u64)
+            let nodes = context.nodes;
+            let nps = if time_taken.as_nanos() > 0 {
+                1000000000 * nodes as u128 / time_taken.as_nanos()
+            } else {
+                0
+            };
+
+            SearchResult::new(context.best_move, abs_eval, context.depth as u64, nodes, nps)
         }
 
         fn order_moves(&mut self, moves: &mut Vec<Move>) {
@@ -256,9 +264,10 @@ mod pimpl {
             }
 
             if depth == 0 {
-                return self.qsearch(alpha, beta);
+                return self.qsearch(context, 0, alpha, beta);
             }
 
+            context.nodes += 1;
             let mut moves = self.generate_moves(false);
 
             if moves.is_empty() {
@@ -304,12 +313,14 @@ mod pimpl {
             alpha
         }
 
-        fn qsearch(&mut self, mut alpha: i64, beta: i64) -> i64 {
+        fn qsearch(&mut self, context: &mut SearchContext, depth_in: usize, mut alpha: i64, beta: i64) -> i64 {
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
+            context.nodes += 1;
+
             let score = match self.in_checkmate(side) {
-                true => -100000,
+                true => -(10000 - (context.depth as i64 + depth_in as i64)),
                 false => self.eval() * multiplier,
             };
 
@@ -325,7 +336,7 @@ mod pimpl {
 
             for capture in moves {
                 self.make_move(capture);
-                let score = -self.qsearch(-beta, -alpha);
+                let score = -self.qsearch(context, depth_in + 1, -beta, -alpha);
                 self.unmake_move();
 
                 if score >= beta {
