@@ -113,6 +113,10 @@ impl UCI {
         }
         if cmd.starts_with("depth") {
             cmd = (&cmd[5..]).trim();
+            let end = cmd.find(' ');
+            if end.is_some() {
+                cmd = &cmd[0..end.unwrap()];
+            }
             let depth = cmd.to_string().parse::<usize>();
             match depth {
                 Err(what) => panic!("cannot parse: {}", what.to_string()),
