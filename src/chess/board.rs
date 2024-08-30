@@ -59,7 +59,7 @@ pub struct Board {
     pub(super) pawns: ColorBitboard,
 
     pub(super) occupied: ColorBitboard,
-    any_piece: Bitboard,
+    pub(super) any_piece: Bitboard,
 
     pub(super) castle_kingside: ColorBool,
     pub(super) castle_queenside: ColorBool,
@@ -356,11 +356,9 @@ impl Board {
         match self.attacks[side] {
             Some(value) => value,
             None => {
-                self.attacks[side] = Some(0);
-                let (moves, attacks) = self.generate_side_moves(side);
-                self.moves[side] = Some(moves);
+                let attacks = self.generate_attacks(side);
                 self.attacks[side] = Some(attacks);
-                self.attacks[side].unwrap()
+                attacks
             }
         }
     }
@@ -370,8 +368,9 @@ impl Board {
             Some(value) => value,
             None => {
                 let opponent = if side == WHITE { BLACK } else { WHITE };
-                self.check[side] = Some(self.kings[side] & self.get_attacks(opponent) != 0);
-                self.check[side].unwrap()
+                let is_in_check = self.kings[side] & self.get_attacks(opponent) != 0;
+                self.check[side] = Some(is_in_check);
+                is_in_check
             }
         }
     }
@@ -379,15 +378,7 @@ impl Board {
     pub fn in_checkmate(&mut self, side: Side) -> bool {
         match self.in_check(side) {
             false => false,
-            true => {
-                let mut moves = if self.moves[side].is_none() {
-                    self.generate_side_moves(side).0
-                } else {
-                    self.moves[side].as_ref().unwrap().clone()
-                };
-                self.prune_checks(side, &mut moves);
-                moves.is_empty()
-            }
+            true => self.generate_side_moves(side, false).is_empty(),
         }
     }
 
@@ -434,26 +425,11 @@ impl Board {
         if (self.occupied[BLACK] & mask) != 0 {
             return BLACK;
         }
-        panic!("Internal error: there should be something on {:066b}", mask);
-    }
-
-    pub fn can_castle_kingside(&mut self, side: Side) -> bool {
-        let attacks = self.get_attacks(if side == WHITE { BLACK } else { WHITE });
-        self.castle_kingside[side]
-            && !self.has_piece(masks::CASTLE_KINGSIDE[side])
-            && !self.has_piece(masks::CASTLE_KINGSIDE_BLOCKER[side])
-            && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
-            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_KINGSIDE_BLOCKER[side]) & attacks == 0
-    }
-
-    pub fn can_castle_queenside(&mut self, side: Side) -> bool {
-        let attacks = self.get_attacks(if side == WHITE { BLACK } else { WHITE });
-        self.castle_queenside[side]
-            && !self.has_piece(masks::CASTLE_QUEENSIDE[side])
-            && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
-            && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side])
-            && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
-            && (masks::KING_STARTING_POSITION[side] | masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side]) & attacks == 0
+        eprintln!("Board history:");
+        for entry in &self.history {
+            eprintln!("* {}{}", idx_to_str(entry.from.trailing_zeros() as usize), idx_to_str(entry.to.trailing_zeros() as usize));
+        }
+        panic!("Internal error: there should be something on {} ({:#066b})", idx_to_str(mask.trailing_zeros() as usize), mask);
     }
 
     fn update_hash(&mut self) {
@@ -461,6 +437,7 @@ impl Board {
     }
 
     pub fn make_move(&mut self, m: Move) {
+        // println!("Making move {}{}", idx_to_str(m.get_from() as usize), idx_to_str(m.get_to() as usize));
         let from_mask = 1u64 << m.get_from();
         let to_mask = 1u64 << m.get_to();
 
@@ -493,10 +470,10 @@ impl Board {
         }
 
         if piece_type == Piece::King {
-            if to_mask == masks::CASTLE_KINGSIDE[side] && self.can_castle_kingside(side) {
+            if to_mask == masks::CASTLE_KINGSIDE[side] && self.castle_kingside[side] {
                 self.remove_piece(masks::ROOK_KINGSIDE[side]);
                 self.put_piece(side, masks::ROOK_CASTLED_KINGSIDE[side], Piece::Rook);
-            } else if to_mask == masks::CASTLE_QUEENSIDE[side] && self.can_castle_queenside(side) {
+            } else if to_mask == masks::CASTLE_QUEENSIDE[side] && self.castle_queenside[side] {
                 self.remove_piece(masks::ROOK_QUEENSIDE[side]);
                 self.put_piece(side, masks::ROOK_CASTLED_QUEENSIDE[side], Piece::Rook);
             }
@@ -563,6 +540,7 @@ impl Board {
         if self.castle_kingside[side] != last_move.castle_kingside[side]
             && last_move.from == masks::KING_STARTING_POSITION[side]
             && last_move.to == masks::CASTLE_KINGSIDE[side]
+            && self.check_piece(side, masks::CASTLE_KINGSIDE[side]) == Some(Piece::King)
         {
             self.remove_piece(masks::ROOK_CASTLED_KINGSIDE[side]);
             self.put_piece(side, masks::ROOK_KINGSIDE[side], Piece::Rook);
@@ -570,6 +548,7 @@ impl Board {
         if self.castle_queenside[side] != last_move.castle_queenside[side]
             && last_move.from == masks::KING_STARTING_POSITION[side]
             && last_move.to == masks::CASTLE_QUEENSIDE[side]
+            && self.check_piece(side, masks::CASTLE_QUEENSIDE[side]) == Some(Piece::King)
         {
             self.remove_piece(masks::ROOK_CASTLED_QUEENSIDE[side]);
             self.put_piece(side, masks::ROOK_QUEENSIDE[side], Piece::Rook);
@@ -864,6 +843,34 @@ mod tests {
             board.assert_position("rnbqkbnr/1ppppppp/p7/8/8/5N2/PPPPPPPP/RNBQKBR1 b Qkq - 1 2");
             board.unmake_move();
             board.assert_position("rnbqkbnr/1ppppppp/p7/8/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 0 2");
+        }
+
+        #[test]
+        fn bug_2() {
+            // kiwipete e1d1 e8c8 d1c1 (undo) a1b1 crash
+            let mut board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+            board.uci("e1d1");
+            board.assert_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R2K3R b kq - 1 1");
+            board.uci("e8c8");
+            board.assert_position("2kr3r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R2K3R w - - 2 2");
+            board.uci("d1c1");
+            board.assert_position("2kr3r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R1K4R b - - 3 2");
+            board.unmake_move();
+            board.assert_position("2kr3r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R2K3R w - - 2 2");
+            board.uci("a1b1");
+            board.assert_position("2kr3r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/1R1K3R b - - 3 2");
+        }
+
+        #[test]
+        fn bug_3() {
+            // kiwipete e2d1 a6f1 (undo) crash
+            let mut board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+            board.uci("e2d1");
+            board.assert_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R2BK2R b KQkq - 1 1");
+            board.uci("a6f1");
+            board.assert_position("r3k2r/p1ppqpb1/1n2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R2BKb1R w KQkq - 2 2");
+            board.unmake_move();
+            board.assert_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R2BK2R b KQkq - 1 1");
         }
     }
 }

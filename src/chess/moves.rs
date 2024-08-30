@@ -104,6 +104,7 @@ impl Move {
         m
     }
 
+    #[allow(dead_code)]
     pub fn from_mask(from: u64, to: u64) -> Self {
         Self::from_idx(from.trailing_zeros() as usize, to.trailing_zeros() as usize)
     }
@@ -154,7 +155,6 @@ impl Move {
     }
 }
 
-#[cfg(feature = "ui")]
 impl Move {
     pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
         let mut m = Self::from_idx(from, to);

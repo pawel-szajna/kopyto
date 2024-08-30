@@ -19,7 +19,6 @@ pub struct UI {
     t_knight: TexturePerColor,
 
     legal_moves: Vec<Move>,
-    attack_mask: Option<u64>,
 
     evaluation: i64,
     side_cpu: Side,
@@ -28,7 +27,6 @@ pub struct UI {
 const SQUARE: [Color; 2] = [Color::new(188, 143, 143, 255), Color::new(245, 233, 220, 255)];
 const SQUARE_LAST_MOVE: [Color; 2] = [Color::new(183, 188, 143, 255), Color::new(217, 222, 177, 255)];
 const SQUARE_LEGAL: [Color; 2] = [Color::new(158, 143, 188, 255), Color::new(207, 188, 214, 255)];
-const SQUARE_ATTACKED: [Color; 2] = [Color::new(212, 106, 194, 255), Color::new(224, 137, 210, 255)];
 const PROMOTION_BACKGROUND: Color = Color::new(255, 255, 255, 192);
 
 #[derive(Copy, Clone)]
@@ -54,7 +52,6 @@ impl UI {
             t_knight: NO_TEXTURE,
 
             legal_moves: Vec::new(),
-            attack_mask: None,
 
             evaluation: 0,
             side_cpu: board::BLACK,
@@ -183,27 +180,11 @@ impl UI {
                 self.board.unmake_move();
             }
 
-            if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) {
-                if self.attack_mask.is_none() {
-                    for piece in &pieces {
-                        if mouse_x > piece.x && mouse_x < piece.x + 60 && mouse_y > piece.y && mouse_y < piece.y + 60 {
-                            let moves = self.board.generate_side_moves_for(piece.side, piece.file, piece.rank);
-                            self.attack_mask = Some(moves.1);
-                            break;
-                        }
-                    }
-                }
-            } else {
-                self.attack_mask = None;
-            }
-
             if current_piece.is_none() && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                 for piece in &pieces {
                     if mouse_x > piece.x && mouse_x < piece.x + 60 && mouse_y > piece.y && mouse_y < piece.y + 60 {
                         current_piece = Some(piece.clone());
-                        let mut moves = self.board.generate_moves_for(piece.file, piece.rank);
-                        self.board.prune_checks(self.board.side_to_move(), &mut moves.0);
-                        self.legal_moves = moves.0;
+                        self.legal_moves = self.board.generate_moves_for(piece.file, piece.rank);
                         break;
                     }
                 }
@@ -300,6 +281,7 @@ impl UI {
                         color = SQUARE_LAST_MOVE[square_shade];
                     }
                 }
+
                 if self
                     .legal_moves
                     .iter()
@@ -307,12 +289,7 @@ impl UI {
                 {
                     color = SQUARE_LEGAL[square_shade];
                 }
-                if self
-                    .attack_mask
-                    .is_some_and(|mask| mask & util::coords_to_mask(file as usize, rank as usize) != 0)
-                {
-                    color = SQUARE_ATTACKED[square_shade];
-                }
+
                 let x = 160 + file * 60;
                 let y = 60 + (7 - rank) * 60;
                 d.draw_rectangle(x, y, 60, 60, color);

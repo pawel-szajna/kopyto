@@ -1,48 +1,36 @@
-use std::time::SystemTime;
 use super::board::{Board, Side, BLACK, WHITE};
 use super::masks;
 use super::moves::{Move, Promotion};
 #[cfg(any(test, feature = "ui"))]
-use super::moves::Piece;
-#[cfg(any(test, feature = "ui"))]
 use super::util;
-
-pub type Moves = (Vec<Move>, u64);
+use std::time::SystemTime;
 
 pub trait MoveGenerator: pimpl::MoveGenerator {
-    fn generate_moves(&mut self) -> Moves;
-    fn generate_side_moves(&mut self, side: Side) -> Moves {
-        self.generate_moves_impl(side)
+    fn generate_moves(&mut self, captures_only: bool) -> Vec<Move>;
+
+    fn generate_side_moves(&mut self, side: Side, captures_only: bool) -> Vec<Move> {
+        self.generate_moves_impl(side, captures_only)
     }
 
-    fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>);
+    fn generate_attacks(&mut self, side: Side) -> u64 {
+        self.attack_mask(side)
+    }
 
     #[cfg(any(test, feature = "ui"))]
-    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves;
+    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move>;
     #[cfg(any(test, feature = "ui"))]
-    fn generate_side_moves_for(&mut self, side: Side, file: usize, rank: usize) -> Moves {
-        let mut result = (vec![], 0u64);
-        self.generate_moves_for_impl(&mut result.0, &mut result.1, side, util::coords_to_mask(file, rank));
-        result
+    fn generate_side_moves_for(&mut self, side: Side, file: usize, rank: usize) -> Vec<Move> {
+        self.generate_moves_for_impl(side, util::coords_to_mask(file, rank))
     }
 }
 
 impl MoveGenerator for Board {
-    fn generate_moves(&mut self) -> Moves {
-        self.generate_side_moves(self.side_to_move())
-    }
-
-    fn prune_checks(&mut self, side: Side, moves: &mut Vec<Move>) {
-        moves.retain(|m| {
-            self.make_move(m.clone());
-            let retain = !self.in_check(side);
-            self.unmake_move();
-            retain
-        });
+    fn generate_moves(&mut self, captures_only: bool) -> Vec<Move> {
+        self.generate_side_moves(self.side_to_move(), captures_only)
     }
 
     #[cfg(any(test, feature = "ui"))]
-    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Moves {
+    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move> {
         self.generate_side_moves_for(self.side_to_move(), file, rank)
     }
 }
@@ -51,8 +39,22 @@ pub fn perft(board: &mut Board, depth: usize) -> u64 {
     let start = SystemTime::now();
     let nodes = perft_impl(board, depth, true);
     let time_taken = start.elapsed().unwrap();
-    let nps = 1000000000 * nodes as u128 / time_taken.as_nanos();
-    println!("depth {} nodes {} time {} nps {}", depth, nodes, time_taken.as_millis(), nps);
+    let nps = if time_taken.as_nanos() > 0 {
+        1000000000 * nodes as u128 / time_taken.as_nanos()
+    } else {
+        0
+    };
+    println!(
+        "depth {} nodes {} time {} nps {}",
+        depth,
+        nodes,
+        time_taken.as_millis(),
+        if nps != 0 {
+            format!("{}", nps)
+        } else {
+            String::from("?")
+        }
+    );
     nodes
 }
 
@@ -62,310 +64,521 @@ fn perft_impl(board: &mut Board, depth: usize, init: bool) -> u64 {
     }
 
     let mut nodes = 0;
-    let (moves, _) = board.generate_moves();
-    let side = board.side_to_move();
-    for m in &moves {
+    let moves = board.generate_moves(false);
+    for m in moves {
         board.make_move(m.clone());
-        if !board.in_check(side) {
-            let res = perft_impl(board, depth - 1, false);
-            if init {
-                println!("{:?}: {}", m, res);
-            }
-            nodes += res;
+        let res = perft_impl(board, depth - 1, false);
+        if init {
+            println!("{:?}: {}", m, res);
         }
+        nodes += res;
         board.unmake_move();
     }
 
     nodes
 }
 
-mod pimpl {
+mod attacks {
     use super::*;
 
-    fn extract_mask_to_moves(from: u64, mut moves_mask: u64, moves: &mut Vec<Move>) {
-        while moves_mask != 0 {
-            let extracted = 1u64 << moves_mask.trailing_zeros();
-            moves.push(Move::from_mask(from, extracted));
-            moves_mask ^= extracted;
-        }
-    }
+    fn slide(idx: usize, diff: isize, boundary: u64, occupied: u64) -> u64 {
+        let mut slider = 1u64 << idx;
+        let mut attacks = 0;
 
-    fn collect_sliders(
-        mut slider: u64,
-        diff: isize,
-        boundary: u64,
-        friendly: u64,
-        enemy: u64,
-        attacked_squares: &mut u64,
-    ) {
         while slider & boundary != 0 {
             if diff >= 0 {
                 slider = slider.checked_shl(diff as u32).unwrap_or(0);
             } else {
                 slider = slider.checked_shr(-diff as u32).unwrap_or(0);
             }
-            if friendly & slider != 0 {
+            attacks |= slider;
+            if occupied & slider != 0 {
                 break;
             }
-            *attacked_squares |= slider;
-            if enemy & slider != 0 {
-                break;
+        }
+
+        attacks
+    }
+
+    pub fn pawn(side: Side, idx: usize) -> u64 {
+        masks::PAWN_TARGETS[side][idx]
+    }
+
+    pub fn knight(idx: usize) -> u64 {
+        masks::KNIGHT_TARGETS[idx]
+    }
+
+    pub fn bishop(idx: usize, occupied: u64) -> u64 {
+        let mut attacks = 0;
+        attacks |= slide(idx, -7, !(masks::RANKS[0] | masks::FILES[7]), occupied);
+        attacks |= slide(idx, -9, !(masks::RANKS[0] | masks::FILES[0]), occupied);
+        attacks |= slide(idx, 7, !(masks::RANKS[7] | masks::FILES[0]), occupied);
+        attacks |= slide(idx, 9, !(masks::RANKS[7] | masks::FILES[7]), occupied);
+        attacks
+    }
+
+    pub fn rook(idx: usize, occupied: u64) -> u64 {
+        let mut attacks = 0;
+        attacks |= slide(idx, -1, !masks::FILES[0], occupied);
+        attacks |= slide(idx, 1, !masks::FILES[7], occupied);
+        attacks |= slide(idx, 8, !masks::RANKS[7], occupied);
+        attacks |= slide(idx, -8, !masks::RANKS[0], occupied);
+        attacks
+    }
+
+    pub fn king(idx: usize) -> u64 {
+        masks::KING_TARGETS[idx]
+    }
+}
+
+mod pimpl {
+    use super::*;
+    use crate::chess::moves::Piece;
+
+    fn generate_piece<F>(moves: &mut Vec<Move>, mut mask: u64, generator: F)
+    where
+        F: Fn(usize) -> u64,
+    {
+        while mask != 0 {
+            let src_idx = mask.trailing_zeros() as usize;
+            let mut moves_mask = generator(src_idx);
+            while moves_mask != 0 {
+                let tgt_idx = moves_mask.trailing_zeros() as usize;
+                moves.push(Move::from_idx(src_idx, tgt_idx));
+                moves_mask &= moves_mask - 1;
             }
+            mask &= mask - 1;
         }
     }
 
     pub trait MoveGenerator {
-        fn generate_piece<F>(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64, f: F)
-        where
-            F: Fn(&Self, &mut Vec<Move>, &mut u64, Side, u64);
-        fn generate_moves_impl(&mut self, side: Side) -> Moves;
+        fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move>;
 
         #[cfg(any(test, feature = "ui"))]
-        fn generate_moves_for_impl(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_moves_for_impl(&mut self, side: Side, mask: u64) -> Vec<Move>;
 
-        fn generate_mask_moves(
+        fn check_mask(&self, side: Side, king: u64) -> (u64, u64);
+        fn attack_mask(&self, side: Side) -> u64;
+        fn pin_mask(&self, side: Side, king_idx: usize, attacks: u64) -> u64;
+        fn parallel_pin_mask(&self, side: Side, king: u64) -> u64;
+        fn diagonal_pin_mask(&self, side: Side, king: u64) -> u64;
+
+        fn generate_pawns(
             &self,
-            moves: &mut Vec<Move>,
-            attacks: &mut u64,
             side: Side,
-            mask: u64,
-            targets: &[u64; 64],
+            moves: &mut Vec<Move>,
+            parallel_pin_mask: u64,
+            diagonal_pin_mask: u64,
+            check_mask: u64,
+            captures_only: bool,
         );
-
-        fn generate_pawn(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_knight(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_king(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_rook(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_bishop(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
-        fn generate_queen(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64);
+        fn generate_knight(&self, knight_idx: usize) -> u64;
+        fn generate_king(&self, king_idx: usize, side: Side, legal_mask: u64) -> u64;
+        fn generate_rook(&self, rook_idx: usize, parallel_pin_mask: u64) -> u64;
+        fn generate_bishop(&self, bishop_idx: usize, diagonal_pin_mask: u64) -> u64;
+        fn generate_queen(&self, queen_idx: usize, parallel_pin_mask: u64, diagonal_pin_mask: u64) -> u64;
     }
 
     impl MoveGenerator for Board {
-        fn generate_moves_impl(&mut self, side: Side) -> Moves {
-            if self.moves[side].is_some() && self.attacks[side].is_some() {
-                return (self.moves[side].clone().unwrap(), self.attacks[side].unwrap());
-            }
+        fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move> {
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+
             let mut moves = Vec::with_capacity(64);
-            let mut attacks = 0u64;
-            self.generate_piece(&mut moves, &mut attacks, side, self.pawns[side], Self::generate_pawn);
-            self.generate_piece(&mut moves, &mut attacks, side, self.rooks[side], Self::generate_rook);
-            self.generate_piece(&mut moves, &mut attacks, side, self.bishops[side], Self::generate_bishop);
-            self.generate_piece(&mut moves, &mut attacks, side, self.queens[side], Self::generate_queen);
-            self.generate_piece(&mut moves, &mut attacks, side, self.knights[side], Self::generate_knight);
-            self.generate_king(&mut moves, &mut attacks, side, self.kings[side]);
 
-            self.moves[side] = Some(moves.clone());
-            self.attacks[side] = Some(attacks);
-            (moves, attacks)
-        }
+            let (check_count, check_mask) = self.check_mask(side, self.kings[side]);
 
-        fn generate_piece<F>(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mut mask: u64, f: F)
-        where
-            F: Fn(&Self, &mut Vec<Move>, &mut u64, Side, u64),
-        {
-            while mask != 0 {
-                let extracted = 1u64 << mask.trailing_zeros();
-                f(self, moves, attacks, side, extracted);
-                mask ^= extracted;
+            let parallel_pin_mask = self.parallel_pin_mask(side, self.kings[side]);
+            let diagonal_pin_mask = self.diagonal_pin_mask(side, self.kings[side]);
+
+            let mut legal_targets = match captures_only {
+                true => self.occupied[opponent],
+                false => !self.occupied[side],
+            };
+
+            generate_piece(&mut moves, self.kings[side], |idx| self.generate_king(idx, side, legal_targets));
+
+            if check_count > 1 {
+                return moves;
             }
+
+            legal_targets &= check_mask;
+
+            self.generate_pawns(side, &mut moves, parallel_pin_mask, diagonal_pin_mask, check_mask, captures_only);
+
+            generate_piece(&mut moves, self.knights[side] & !(parallel_pin_mask | diagonal_pin_mask), |idx| {
+                self.generate_knight(idx) & legal_targets
+            });
+            generate_piece(&mut moves, self.bishops[side] & !parallel_pin_mask, |idx| {
+                self.generate_bishop(idx, diagonal_pin_mask) & legal_targets
+            });
+            generate_piece(&mut moves, self.rooks[side] & !diagonal_pin_mask, |idx| {
+                self.generate_rook(idx, parallel_pin_mask) & legal_targets
+            });
+            generate_piece(&mut moves, self.queens[side] & !(parallel_pin_mask & diagonal_pin_mask), |idx| {
+                self.generate_queen(idx, parallel_pin_mask, diagonal_pin_mask) & legal_targets
+            });
+
+            moves
         }
 
         #[cfg(any(test, feature = "ui"))]
-        fn generate_moves_for_impl(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            match self.check_piece(side, mask) {
-                None => (),
-                Some(piece) => match piece {
-                    Piece::Pawn => self.generate_pawn(moves, attacks, side, mask),
-                    Piece::Knight => self.generate_knight(moves, attacks, side, mask),
-                    Piece::King => self.generate_king(moves, attacks, side, mask),
-                    Piece::Rook => self.generate_rook(moves, attacks, side, mask),
-                    Piece::Bishop => self.generate_bishop(moves, attacks, side, mask),
-                    Piece::Queen => self.generate_queen(moves, attacks, side, mask),
-                },
-            }
+        fn generate_moves_for_impl(&mut self, side: Side, mask: u64) -> Vec<Move> {
+            let mut moves = self.generate_moves_impl(side, false);
+            moves.retain(|m| m.get_from() == mask.trailing_zeros() as u16);
+            moves
         }
 
-        fn generate_mask_moves(
+        fn check_mask(&self, side: Side, king: u64) -> (u64, u64) {
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+            assert_ne!(king, 0, "no king on board");
+            let king_idx = king.trailing_zeros() as usize;
+
+            let mut checks = 0;
+            let mut check_mask = 0;
+
+            let pawns = self.pawns[opponent] & attacks::pawn(side, king_idx);
+            if pawns != 0 {
+                checks += 1;
+                check_mask |= pawns;
+            }
+
+            let knights = self.knights[opponent] & attacks::knight(king_idx);
+            if knights != 0 {
+                checks += 1;
+                check_mask |= knights;
+            }
+
+            let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece);
+            if bishops != 0 {
+                checks += 1;
+                let attacker_idx = bishops.trailing_zeros() as usize;
+                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | (1u64 << attacker_idx);
+            }
+
+            let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece);
+            if rooks != 0 {
+                checks += rooks.count_ones() as u64;
+                let attacker_idx = rooks.trailing_zeros() as usize;
+                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | (1u64 << attacker_idx);
+            }
+
+            if check_mask == 0 {
+                check_mask = !check_mask;
+            }
+
+            (checks, check_mask)
+        }
+
+        fn attack_mask(&self, side: Side) -> u64 {
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+
+            let king_idx = self.kings[opponent].trailing_zeros() as usize;
+            let king_attacks = attacks::king(king_idx);
+
+            if king_attacks & !self.occupied[opponent] == 0 {
+                // king cannot move
+                return 0;
+            }
+
+            let mut mask = 0;
+            let occupied = self.any_piece & !self.kings[opponent];
+
+            let mut pawns = self.pawns[side];
+            while pawns != 0 {
+                let pawn_idx = pawns.trailing_zeros() as usize;
+                mask |= attacks::pawn(side, pawn_idx);
+                pawns &= pawns - 1;
+            }
+
+            let mut knights = self.knights[side];
+            while knights != 0 {
+                let knight_idx = knights.trailing_zeros() as usize;
+                mask |= attacks::knight(knight_idx);
+                knights &= knights - 1;
+            }
+
+            let mut bishops = self.bishops[side] | self.queens[side];
+            while bishops != 0 {
+                let bishop_idx = bishops.trailing_zeros() as usize;
+                mask |= attacks::bishop(bishop_idx, occupied);
+                bishops &= bishops - 1;
+            }
+
+            let mut rooks = self.rooks[side] | self.queens[side];
+            while rooks != 0 {
+                let rook_idx = rooks.trailing_zeros() as usize;
+                mask |= attacks::rook(rook_idx, occupied);
+                rooks &= rooks - 1;
+            }
+
+            mask |= attacks::king(self.kings[side].trailing_zeros() as usize);
+
+            mask
+        }
+
+        fn pin_mask(&self, side: Side, king_idx: usize, mut attacks: u64) -> u64 {
+            let mut result = 0;
+
+            while attacks != 0 {
+                let pinner_idx = attacks.trailing_zeros() as usize;
+                let pinner = 1u64 << pinner_idx;
+                let ray = masks::BETWEEN[king_idx][pinner_idx] | pinner;
+                if (ray & self.occupied[side]).count_ones() == 1 {
+                    result |= ray;
+                }
+                attacks ^= pinner;
+            }
+
+            result
+        }
+
+        fn parallel_pin_mask(&self, side: Side, king: u64) -> u64 {
+            let king_idx = king.trailing_zeros() as usize;
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+            self.pin_mask(
+                side,
+                king_idx,
+                attacks::rook(king_idx, self.occupied[opponent]) & (self.rooks[opponent] | self.queens[opponent]),
+            )
+        }
+
+        fn diagonal_pin_mask(&self, side: Side, king: u64) -> u64 {
+            let king_idx = king.trailing_zeros() as usize;
+            let opponent = if side == WHITE { BLACK } else { WHITE };
+            self.pin_mask(
+                side,
+                king_idx,
+                attacks::bishop(king_idx, self.occupied[opponent]) & (self.bishops[opponent] | self.queens[opponent]),
+            )
+        }
+
+        fn generate_pawns(
             &self,
-            moves: &mut Vec<Move>,
-            attacks: &mut u64,
             side: Side,
-            mask: u64,
-            targets: &[u64; 64],
+            moves: &mut Vec<Move>,
+            parallel_pin_mask: u64,
+            diagonal_pin_mask: u64,
+            check_mask: u64,
+            captures_only: bool,
         ) {
-            let moves_mask = targets[mask.trailing_zeros() as usize] & !self.occupied[side];
-            extract_mask_to_moves(mask, moves_mask, moves);
-            *attacks |= moves_mask;
-        }
-
-        fn generate_pawn(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            let basic_direction = if side == WHITE { mask << 8 } else { mask >> 8 };
-            let blockade = self.has_piece(basic_direction);
-            let mut pawn_moves = [Move::new(), Move::new(), Move::new()];
-            let mut pawn_moves_used = 0usize;
-
-            if !blockade {
-                pawn_moves[pawn_moves_used] = Move::from_mask(mask, basic_direction);
-                pawn_moves_used += 1;
-            }
-
-            let piece_to_left = if side == WHITE { mask << 7 } else { mask >> 9 };
-            let piece_to_right = if side == WHITE { mask << 9 } else { mask >> 7 };
             let opponent = if side == WHITE { BLACK } else { WHITE };
 
-            let possible_pawn_attacks = self.occupied[opponent] | self.en_passant;
+            let pawns = self.pawns[side];
 
-            if masks::FILES[0] & mask == 0 {
-                *attacks |= piece_to_left;
-                if possible_pawn_attacks & piece_to_left != 0 {
-                    pawn_moves[pawn_moves_used] = Move::from_mask(mask, piece_to_left);
-                    pawn_moves_used += 1;
+            let pawns_may_take = pawns & !parallel_pin_mask;
+            let pawns_may_take_unpinned = pawns_may_take & !diagonal_pin_mask;
+            let pawns_may_take_pinned = pawns_may_take & diagonal_pin_mask;
+
+            let mut attacks_left = match side {
+                WHITE => {
+                    ((pawns_may_take_unpinned << 7) & !masks::FILES[7])
+                        | ((pawns_may_take_pinned << 7) & !masks::FILES[7] & diagonal_pin_mask)
                 }
-            }
-
-            if masks::FILES[7] & mask == 0 {
-                *attacks |= piece_to_right;
-                if possible_pawn_attacks & piece_to_right != 0 {
-                    pawn_moves[pawn_moves_used] = Move::from_mask(mask, piece_to_right);
-                    pawn_moves_used += 1;
+                _ => {
+                    ((pawns_may_take_unpinned >> 7) & !masks::FILES[0])
+                        | ((pawns_may_take_pinned >> 7) & !masks::FILES[0] & diagonal_pin_mask)
                 }
-            }
+            } & check_mask
+                & self.occupied[opponent];
 
-            if masks::RANKS_RELATIVE[6][side] & mask != 0 {
-                pawn_moves[0..pawn_moves_used]
-                    .into_iter()
-                    .flat_map(|m| {
-                        std::iter::repeat(m)
-                            .take(4)
-                            .zip([Promotion::Queen, Promotion::Rook, Promotion::Bishop, Promotion::Knight])
-                            .map(|(m, p)| {
-                                let mut m = m.clone();
-                                m.set_promotion(p);
-                                m
-                            })
-                    })
-                    .for_each(|m| {
-                        moves.push(m);
-                    });
+            let mut attacks_right = match side {
+                WHITE => {
+                    ((pawns_may_take_unpinned << 9) & !masks::FILES[0])
+                        | ((pawns_may_take_pinned << 9) & !masks::FILES[0] & diagonal_pin_mask)
+                }
+                _ => {
+                    ((pawns_may_take_unpinned >> 9) & !masks::FILES[7])
+                        | ((pawns_may_take_pinned >> 9) & !masks::FILES[7] & diagonal_pin_mask)
+                }
+            } & check_mask
+                & self.occupied[opponent];
+
+            let pawns_may_walk = pawns & !diagonal_pin_mask;
+            let pawns_may_walk_pinned = pawns_may_walk & parallel_pin_mask;
+            let pawns_may_walk_unpinned = pawns_may_walk & !parallel_pin_mask;
+
+            let pawns_walk_unpinned = if side == WHITE {
+                pawns_may_walk_unpinned << 8
             } else {
-                pawn_moves[0..pawn_moves_used].into_iter().for_each(|m| {
-                    moves.push(m.clone());
-                });
+                pawns_may_walk_unpinned >> 8
+            } & !self.any_piece;
+            let pawns_walk_pinned = if side == WHITE {
+                pawns_may_walk_pinned << 8
+            } else {
+                pawns_may_walk_pinned >> 8
+            } & !self.any_piece
+                & parallel_pin_mask;
+
+            let mut pawns_walk = (pawns_walk_unpinned | pawns_walk_pinned) & check_mask;
+
+            let pawns_double = (pawns_walk_unpinned | pawns_walk_pinned) & masks::RANKS_RELATIVE[2][side];
+
+            let mut pawns_double_walk = if side == WHITE {
+                pawns_double << 8
+            } else {
+                pawns_double >> 8
+            } & !self.any_piece
+                & check_mask;
+
+            if pawns & masks::NEXT_TO_SECOND_RANK[side] != 0 {
+                let mut promotion_attacks_left = attacks_left & masks::LAST_RANK[side];
+                let mut promotion_attacks_right = attacks_right & masks::LAST_RANK[side];
+                let mut promotion_walk = pawns_walk & masks::LAST_RANK[side];
+
+                while promotion_attacks_left != 0 {
+                    let tgt_idx = promotion_attacks_left.trailing_zeros() as usize;
+                    let src_idx = if side == WHITE { tgt_idx - 7 } else { tgt_idx + 7 };
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
+                    promotion_attacks_left &= promotion_attacks_left - 1;
+                }
+
+                while promotion_attacks_right != 0 {
+                    let tgt_idx = promotion_attacks_right.trailing_zeros() as usize;
+                    let src_idx = if side == WHITE { tgt_idx - 9 } else { tgt_idx + 9 };
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
+                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
+                    promotion_attacks_right &= promotion_attacks_right - 1;
+                }
+
+                if !captures_only {
+                    while promotion_walk != 0 {
+                        let tgt_idx = promotion_walk.trailing_zeros() as usize;
+                        let src_idx = if side == WHITE { tgt_idx - 8 } else { tgt_idx + 8 };
+                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
+                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
+                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
+                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
+                        promotion_walk &= promotion_walk - 1;
+                    }
+                }
             }
 
-            let double_move_target = if side == WHITE { mask << 16 } else { mask >> 16 };
+            pawns_walk &= !masks::LAST_RANK[side];
+            attacks_left &= !masks::LAST_RANK[side];
+            attacks_right &= !masks::LAST_RANK[side];
 
-            if !blockade && masks::RANKS_RELATIVE[1][side] & mask != 0 && !self.has_piece(double_move_target) {
-                moves.push(Move::from_mask(mask, double_move_target));
+            while attacks_left != 0 {
+                let idx = attacks_left.trailing_zeros() as usize;
+                moves.push(Move::from_idx(if side == WHITE { idx - 7 } else { idx + 7 }, idx));
+                attacks_left &= attacks_left - 1;
+            }
+
+            while attacks_right != 0 {
+                let idx = attacks_right.trailing_zeros() as usize;
+                moves.push(Move::from_idx(if side == WHITE { idx - 9 } else { idx + 9 }, idx));
+                attacks_right &= attacks_right - 1;
+            }
+
+            if !captures_only {
+                while pawns_walk != 0 {
+                    let idx = pawns_walk.trailing_zeros() as usize;
+                    moves.push(Move::from_idx(if side == WHITE { idx - 8 } else { idx + 8 }, idx));
+                    pawns_walk &= pawns_walk - 1;
+                }
+
+                while pawns_double_walk != 0 {
+                    let idx = pawns_double_walk.trailing_zeros() as usize;
+                    moves.push(Move::from_idx(if side == WHITE { idx - 16 } else { idx + 16 }, idx));
+                    pawns_double_walk &= pawns_double_walk - 1;
+                }
+            }
+
+            if self.en_passant == 0 {
+                return;
+            }
+
+            let target = self.en_passant;
+            let target_idx = target.trailing_zeros() as usize;
+            let enemy_pawn = if side == WHITE {
+                self.en_passant >> 8
+            } else {
+                self.en_passant << 8
+            };
+            let enemy_pawn_idx = enemy_pawn.trailing_zeros() as usize;
+
+            if (enemy_pawn | target) & check_mask == 0 {
+                return;
+            }
+
+            let mut en_passant_attackers = attacks::pawn(opponent, target_idx) & pawns_may_take;
+
+            let king_mask = self.kings[side] & masks::RANKS[enemy_pawn_idx / 8];
+            let rook_mask = self.rooks[opponent] | self.queens[opponent];
+
+            while en_passant_attackers != 0 {
+                let source_idx = en_passant_attackers.trailing_zeros() as usize;
+                let source = 1u64 << source_idx;
+                en_passant_attackers ^= source;
+
+                if (source & diagonal_pin_mask) == 0 || (target & diagonal_pin_mask) != 0 {
+                    if king_mask != 0 && rook_mask != 0 {
+                        let pawns_mask = enemy_pawn | source;
+                        let king_idx = self.kings[side].trailing_zeros() as usize;
+                        if attacks::rook(king_idx, self.any_piece & !pawns_mask) & rook_mask != 0 {
+                            break;
+                        }
+                    }
+
+                    moves.push(Move::from_idx(source_idx, target_idx));
+                }
             }
         }
 
-        fn generate_knight(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            self.generate_mask_moves(moves, attacks, side, mask, &masks::KNIGHT_TARGETS);
+        fn generate_knight(&self, knight_idx: usize) -> u64 {
+            attacks::knight(knight_idx)
         }
 
-        fn generate_king(&mut self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            self.generate_mask_moves(moves, attacks, side, mask, &masks::KING_TARGETS);
+        fn generate_king(&self, king_idx: usize, side: Side, legal_mask: u64) -> u64 {
+            let enemy_attacks = self.attack_mask(if side == WHITE { BLACK } else { WHITE });
+            let mut targets = attacks::king(king_idx) & legal_mask & !enemy_attacks;
 
-            if self.can_castle_kingside(side) {
-                moves.push(Move::from_mask(mask, masks::CASTLE_KINGSIDE[side]));
+            if self.castle_kingside[side]
+                && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
+                && masks::KING_STARTING_POSITION[side] & enemy_attacks == 0
+                && masks::CASTLE_KINGSIDE_BLOCKER[side] & !self.any_piece & !enemy_attacks != 0
+                && masks::CASTLE_KINGSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks != 0
+            {
+                targets |= masks::CASTLE_KINGSIDE[side];
             }
-            if self.can_castle_queenside(side) {
-                moves.push(Move::from_mask(mask, masks::CASTLE_QUEENSIDE[side]));
+
+            if self.castle_queenside[side]
+                && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
+                && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+                && masks::KING_STARTING_POSITION[side] & enemy_attacks == 0
+                && masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side] & !self.any_piece & !enemy_attacks != 0
+                && masks::CASTLE_QUEENSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks != 0
+            {
+                targets |= masks::CASTLE_QUEENSIDE[side];
+            }
+
+            targets
+        }
+
+        fn generate_rook(&self, rook_idx: usize, parallel_pin_mask: u64) -> u64 {
+            match parallel_pin_mask & (1u64 << rook_idx) != 0 {
+                true => attacks::rook(rook_idx, self.any_piece) & parallel_pin_mask,
+                false => attacks::rook(rook_idx, self.any_piece),
             }
         }
 
-        fn generate_rook(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            let opponent = if side == WHITE { BLACK } else { WHITE };
-
-            let mut attacked = 0u64;
-
-            let idx = mask.trailing_zeros() as usize;
-            let file = idx % 8;
-            let rank = idx / 8;
-
-            collect_sliders(
-                mask,
-                -1,
-                masks::RANKS[rank] & !masks::FILES[0],
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-            collect_sliders(
-                mask,
-                1,
-                masks::RANKS[rank] & !masks::FILES[7],
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-            collect_sliders(
-                mask,
-                8,
-                masks::FILES[file] & !masks::RANKS[7],
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-            collect_sliders(
-                mask,
-                -8,
-                masks::FILES[file] & !masks::RANKS[0],
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-
-            *attacks |= attacked;
-            extract_mask_to_moves(mask, attacked, moves);
+        fn generate_bishop(&self, bishop_idx: usize, diagonal_pin_mask: u64) -> u64 {
+            match diagonal_pin_mask & (1u64 << bishop_idx) != 0 {
+                true => attacks::bishop(bishop_idx, self.any_piece) & diagonal_pin_mask,
+                false => attacks::bishop(bishop_idx, self.any_piece),
+            }
         }
 
-        fn generate_bishop(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            let opponent = if side == WHITE { BLACK } else { WHITE };
-
-            let mut attacked = 0u64;
-
-            collect_sliders(
-                mask,
-                -7,
-                !(masks::RANKS[0] | masks::FILES[7]),
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-            collect_sliders(
-                mask,
-                -9,
-                !(masks::RANKS[0] | masks::FILES[0]),
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-            collect_sliders(
-                mask,
-                7,
-                !(masks::RANKS[7] | masks::FILES[0]),
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-            collect_sliders(
-                mask,
-                9,
-                !(masks::RANKS[7] | masks::FILES[7]),
-                self.occupied[side],
-                self.occupied[opponent],
-                &mut attacked,
-            );
-
-            *attacks |= attacked;
-            extract_mask_to_moves(mask, attacked, moves);
-        }
-
-        fn generate_queen(&self, moves: &mut Vec<Move>, attacks: &mut u64, side: Side, mask: u64) {
-            self.generate_rook(moves, attacks, side, mask);
-            self.generate_bishop(moves, attacks, side, mask);
+        fn generate_queen(&self, queen_idx: usize, parallel_pin_mask: u64, diagonal_pin_mask: u64) -> u64 {
+            match 1 << queen_idx {
+                mask if mask & diagonal_pin_mask != 0 => attacks::bishop(queen_idx, self.any_piece) & diagonal_pin_mask,
+                mask if mask & parallel_pin_mask != 0 => attacks::rook(queen_idx, self.any_piece) & parallel_pin_mask,
+                _ => attacks::bishop(queen_idx, self.any_piece) | attacks::rook(queen_idx, self.any_piece),
+            }
         }
     }
 }
@@ -383,18 +596,20 @@ mod tests {
         };
     }
 
-    fn piece_move_generation_test(fen: &str, file: usize, rank: usize, mut expected: Vec<Move>) {
-        let mut board = Board::from_fen(fen);
-
-        let mut moves = board.generate_moves_for(file, rank);
-        board.prune_checks(board.side_to_move(), &mut moves.0);
-
-        let mut generated = moves.0;
-
+    fn move_generation_comparison(mut generated: Vec<Move>, mut expected: Vec<Move>) {
         generated.sort_unstable();
         expected.sort_unstable();
 
         assert_eq!(generated, expected);
+    }
+
+    fn piece_move_generation_test(fen: &str, file: usize, rank: usize, expected: Vec<Move>) {
+        println!("Move generation test at position {}", fen);
+
+        let mut board = Board::from_fen(fen);
+        let moves = board.generate_moves_for(file, rank);
+
+        move_generation_comparison(moves, expected);
     }
 
     mod perft {
@@ -439,6 +654,11 @@ mod tests {
             perft_initial(5, 4865609);
         }
 
+        #[test]
+        fn perft_initial_6() {
+            perft_initial(6, 119060324);
+        }
+
         fn perft_kiwipete(depth: usize, expected: u64) {
             perft_run("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0", depth, expected);
         }
@@ -461,6 +681,11 @@ mod tests {
         #[test]
         fn perft_kiwipete_4() {
             perft_kiwipete(4, 4085603);
+        }
+
+        #[test]
+        fn perft_kiwipete_5() {
+            perft_kiwipete(5, 193690690);
         }
 
         fn perft_endgame(depth: usize, expected: u64) {
@@ -492,6 +717,40 @@ mod tests {
             perft_endgame(5, 674624);
         }
 
+        #[test]
+        fn perft_endgame_6() {
+            perft_endgame(6, 11030083);
+        }
+
+        fn perft_pos4(depth: usize, expected: u64) {
+            perft_run("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", depth, expected);
+        }
+
+        #[test]
+        fn perft_pos4_1() {
+            perft_pos4(1, 6);
+        }
+
+        #[test]
+        fn perft_pos4_2() {
+            perft_pos4(2, 264);
+        }
+
+        #[test]
+        fn perft_pos4_3() {
+            perft_pos4(3, 9467);
+        }
+
+        #[test]
+        fn perft_pos4_4() {
+            perft_pos4(4, 422333);
+        }
+
+        #[test]
+        fn perft_pos4_5() {
+            perft_pos4(5, 15833292);
+        }
+
         fn perft_pos5(depth: usize, expected: u64) {
             perft_run("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", depth, expected);
         }
@@ -514,6 +773,11 @@ mod tests {
         #[test]
         fn perft_pos5_4() {
             perft_pos5(4, 2103487);
+        }
+
+        #[test]
+        fn perft_pos5_5() {
+            perft_pos5(5, 89941194);
         }
     }
 
@@ -629,6 +893,19 @@ mod tests {
                 3,
                 vec![a_move!("f4", "g3")],
             );
+            piece_move_generation_test(
+                "rnbqkbnr/1ppp1ppp/8/3PpP2/p7/8/PPP1P1PP/RNBQKBNR w KQkq e6 0 5",
+                3,
+                4,
+                vec![a_move!("d5", "d6"), a_move!("d5", "e6")],
+            );
+            piece_move_generation_test(
+                "rnbqkbnr/1ppp1ppp/8/3PpP2/p7/8/PPP1P1PP/RNBQKBNR w KQkq e6 0 5",
+                5,
+                4,
+                vec![a_move!("f5", "e6"), a_move!("f5", "f6")],
+            );
+            piece_move_generation_test("8/2p5/3p4/KP5r/1R2Pp1k/8/6P1/8 b - e3 0 1", 5, 3, vec![a_move!("f4", "f3")]);
         }
     }
 
@@ -779,7 +1056,31 @@ mod tests {
                 4,
                 7,
                 vec![a_move!("e8", "d8")],
-            )
+            );
+            piece_move_generation_test(
+                "r3k2r/p1ppqpb1/Bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R3K2R b KQkq - 0 1",
+                4,
+                7,
+                vec![a_move!("e8", "d8"), a_move!("e8", "f8"), a_move!("e8", "g8")],
+            );
+            piece_move_generation_test(
+                "r3k2r/p1ppqpb1/1n2pnp1/3PN3/1p2P3/2N2Q1P/PPPBbP1P/R3K2R w KQkq - 0 2",
+                4,
+                0,
+                vec![a_move!("e1", "e2")],
+            );
+            piece_move_generation_test(
+                "r3k2r/p1ppqpb1/1n2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R2BKb1R w KQkq - 2 2",
+                4,
+                0,
+                vec![a_move!("e1", "f1")],
+            );
+            piece_move_generation_test(
+                "r1B1k2r/p1ppqpb1/1n2pnp1/3PN3/4P3/2p2Q1p/PPPB1PPP/R3K2R b KQkq - 1 2",
+                4,
+                7,
+                vec![a_move!("e8", "d8"), a_move!("e8", "f8"), a_move!("e8", "g8")],
+            );
         }
 
         #[test]
@@ -791,5 +1092,26 @@ mod tests {
                 vec![a_move!("g5", "h5")],
             );
         }
+    }
+
+    #[test]
+    fn from_position() {
+        let mut board = Board::from_starting_position();
+
+        board.make_move(Move::from_uci("c2c3"));
+        board.make_move(Move::from_uci("d7d6"));
+        board.make_move(Move::from_uci("d1a4"));
+
+        move_generation_comparison(
+            board.generate_moves(false),
+            vec![
+                a_move!("b7", "b5"),
+                a_move!("b8", "c6"),
+                a_move!("b8", "d7"),
+                a_move!("c7", "c6"),
+                a_move!("c8", "d7"),
+                a_move!("d8", "d7"),
+            ],
+        );
     }
 }

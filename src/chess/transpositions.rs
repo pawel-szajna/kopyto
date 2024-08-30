@@ -69,25 +69,33 @@ impl Zobrist {
     pub fn key(&self, board: &Board, castle_kingside: [bool; 2], castle_queenside: [bool; 2]) -> u64 {
         let mut key = 0u64;
 
-        for side in [ WHITE, BLACK ] {
-            for (mask, keys) in [
-                (board.pawns[side], &self.keys_pawns[side]),
-                (board.knights[side], &self.keys_knights[side]),
-                (board.bishops[side], &self.keys_bishops[side]),
-                (board.rooks[side], &self.keys_rooks[side]),
-                (board.queens[side], &self.keys_queens[side]),
-                (board.kings[side], &self.keys_kings[side]),
-            ] {
-                key ^= self.key_piece(mask, keys);
-            }
+        key ^= self.key_piece(board.pawns[WHITE], &self.keys_pawns[WHITE]);
+        key ^= self.key_piece(board.pawns[BLACK], &self.keys_pawns[BLACK]);
+        key ^= self.key_piece(board.knights[WHITE], &self.keys_knights[WHITE]);
+        key ^= self.key_piece(board.knights[BLACK], &self.keys_knights[BLACK]);
+        key ^= self.key_piece(board.bishops[WHITE], &self.keys_bishops[WHITE]);
+        key ^= self.key_piece(board.bishops[BLACK], &self.keys_bishops[BLACK]);
+        key ^= self.key_piece(board.rooks[WHITE], &self.keys_rooks[WHITE]);
+        key ^= self.key_piece(board.rooks[BLACK], &self.keys_rooks[BLACK]);
+        key ^= self.key_piece(board.queens[WHITE], &self.keys_queens[WHITE]);
+        key ^= self.key_piece(board.queens[BLACK], &self.keys_queens[BLACK]);
+        key ^= self.key_piece(board.kings[WHITE], &self.keys_kings[WHITE]);
+        key ^= self.key_piece(board.kings[BLACK], &self.keys_kings[BLACK]);
 
-            if castle_kingside[side] {
-                key ^= self.key_castle_kingside[side];
-            }
+        if castle_kingside[WHITE] {
+            key ^= self.key_castle_kingside[WHITE];
+        }
 
-            if castle_queenside[side] {
-                key ^= self.key_castle_queenside[side];
-            }
+        if castle_kingside[BLACK] {
+            key ^= self.key_castle_kingside[BLACK];
+        }
+
+        if castle_queenside[WHITE] {
+            key ^= self.key_castle_queenside[WHITE];
+        }
+
+        if castle_queenside[BLACK] {
+            key ^= self.key_castle_queenside[BLACK];
         }
 
         if board.side_to_move() == BLACK {
@@ -107,7 +115,7 @@ impl Zobrist {
         while mask != 0 {
             let idx = mask.trailing_zeros() as usize;
             key ^= keys[idx];
-            mask ^= 1u64 << idx;
+            mask &= mask - 1;
         }
 
         key

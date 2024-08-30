@@ -8,6 +8,26 @@ pub fn coords_to_idx(file: usize, rank: usize) -> usize {
     rank * 8 + file
 }
 
+#[allow(dead_code)]
+pub fn print_mask(title: &str, mask: u64) {
+    let mut str = String::new();
+    let mut line = String::new();
+
+    for i in 0..65 {
+        if i % 8 == 0 {
+            str = format!("{}\n{}", line, str);
+            line = String::new();
+        }
+        if i == 64 {
+            break
+        }
+        line = format!("{} {}", line, if (1u64 << i) & mask != 0 { '1' } else { '.' });
+    }
+
+    println!("{}", title);
+    println!("{}", str);
+}
+
 pub fn idx_to_str(idx: usize) -> String {
     let mut result = String::new();
     let file = idx % 8;

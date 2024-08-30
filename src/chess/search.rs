@@ -122,7 +122,7 @@ impl Options {
             black_time: u64::MAX,
             white_increment: 0,
             black_increment: 0,
-            depth: Some(2),
+            depth: Some(3),
         }
     }
 }
@@ -259,8 +259,7 @@ mod pimpl {
                 return self.qsearch(alpha, beta);
             }
 
-            let (mut moves, _) = self.generate_moves();
-            self.prune_checks(side, &mut moves);
+            let mut moves = self.generate_moves(false);
 
             if moves.is_empty() {
                 return if self.in_check(side) {
@@ -307,7 +306,6 @@ mod pimpl {
 
         fn qsearch(&mut self, mut alpha: i64, beta: i64) -> i64 {
             let side = self.side_to_move();
-            let opponent = if side == WHITE { BLACK } else { WHITE };
             let multiplier = if side == WHITE { 1 } else { -1 };
 
             let score = match self.in_checkmate(side) {
@@ -323,9 +321,7 @@ mod pimpl {
                 alpha = score;
             }
 
-            let (mut moves, _) = self.generate_moves();
-            moves.retain(|m| (1u64 << (m.get_to() as usize)) & self.occupied[opponent] != 0);
-            self.prune_checks(side, &mut moves);
+            let moves = self.generate_moves(true);
 
             for capture in moves {
                 self.make_move(capture);
