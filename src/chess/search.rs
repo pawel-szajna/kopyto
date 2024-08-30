@@ -149,6 +149,7 @@ mod pimpl {
     use crate::chess::board::{BLACK, WHITE};
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
+    use crate::chess::moves::Piece;
     use crate::chess::transpositions::Score::{Exact, LowerBound, UpperBound};
 
     const NULL_MOVE: Move = Move::new();
@@ -212,10 +213,38 @@ mod pimpl {
             let opponent = if side == WHITE { BLACK } else { WHITE };
             let attacks = self.occupied[opponent];
 
+            let piece_value = |p: Option<Piece>| match p {
+                None => 0,
+                Some(Piece::Pawn) => 10,
+                Some(Piece::Knight) => 30,
+                Some(Piece::Bishop) => 32,
+                Some(Piece::Rook) => 50,
+                Some(Piece::Queen) => 90,
+                Some(Piece::King) => 50,
+            };
+
             moves.sort_by(|x, y| {
-                match (1u64 << x.get_to()) & attacks == 0 && (1u64 << y.get_to()) & attacks != 0 {
-                    true => std::cmp::Ordering::Less,
-                    false => std::cmp::Ordering::Greater,
+                let x_target_mask = 1u64 << x.get_to();
+                let y_target_mask = 1u64 << y.get_to();
+                match x_target_mask & attacks == 0 {
+                    true => match y_target_mask & attacks == 0 {
+                        true => {
+                            let x_source_mask = 1u64 << x.get_from();
+                            let y_source_mask = 1u64 << y.get_from();
+                            let x_attacker_value = piece_value(self.check_piece(side, x_source_mask));
+                            let x_defender_value = piece_value(self.check_piece(opponent, x_target_mask));
+                            let y_attacker_value = piece_value(self.check_piece(side, y_source_mask));
+                            let y_defender_value = piece_value(self.check_piece(opponent, y_target_mask));
+                            let x_score = x_attacker_value - x_defender_value;
+                            let y_score = y_attacker_value - y_defender_value;
+                            x_score.cmp(&y_score)
+                        },
+                        false => std::cmp::Ordering::Less,
+                    },
+                    false => match y_target_mask & attacks == 0 {
+                        true => std::cmp::Ordering::Greater,
+                        false => std::cmp::Ordering::Equal,
+                    }
                 }
             })
         }
