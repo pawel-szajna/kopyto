@@ -43,7 +43,7 @@ fn run_uci() {
 fn main() {
     let args = Args::parse();
     match args.mode {
-        Some(Modes::UI) | None => run_ui(),
-        Some(Modes::UCI) => run_uci(),
+        Some(Modes::UI) => run_ui(),
+        Some(Modes::UCI) | None => run_uci(),
     }
 }
