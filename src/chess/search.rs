@@ -97,10 +97,7 @@ mod weights {
 }
 
 pub struct Options {
-    // TODO: remove nolints when time management is finally implemented
-    #[allow(dead_code)]
     pub white_time: u64,
-    #[allow(dead_code)]
     pub black_time: u64,
     #[allow(dead_code)]
     pub white_increment: u64,
@@ -116,7 +113,7 @@ impl Options {
             black_time: u64::MAX,
             white_increment: 0,
             black_increment: 0,
-            depth: Some(3),
+            depth: None,
         }
     }
 }
@@ -141,19 +138,26 @@ mod pimpl {
     use crate::chess::util;
 
     const NULL_MOVE: Move = Move::new();
+    const MIN_MOVE_TIME: u128 = 200;
 
     pub struct SearchContext {
         depth: usize,
         best_move: Move,
         nodes: u64,
+        start_time: SystemTime,
+        target_time: u128,
+        time_hit: bool,
     }
 
     impl SearchContext {
-        pub fn new(depth: usize) -> Self {
+        pub fn new(depth: usize, start_time: SystemTime, target_time: u128) -> Self {
             Self {
                 depth,
                 best_move: NULL_MOVE,
                 nodes: 0,
+                start_time,
+                target_time,
+                time_hit: false,
             }
         }
     }
@@ -173,8 +177,18 @@ mod pimpl {
             let start = SystemTime::now();
             self.transpositions.clear();
 
+            let side = self.side_to_move();
+            let our_time = if side == WHITE { options.white_time } else { options.black_time };
+            let opponent_time = if side == WHITE { options.black_time } else { options.white_time };
+            let time_advantage = our_time as i64 - opponent_time as i64;
+            let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
+
+            let target_time = our_time / 40 + max(0, time_advantage_modifier) as u64;
+
+            println!("info string our_time {} opponent_time {} time_advantage {} advantage_modifier {} target_time {}", our_time ,opponent_time, time_advantage, time_advantage_modifier, target_time);
+
             let depth = options.depth.unwrap_or(usize::MAX);
-            let mut context = SearchContext::new(depth);
+            let mut context = SearchContext::new(depth, start, max(target_time as u128, MIN_MOVE_TIME));
             let mut eval = self.last_eval;
 
             for current_depth in 1..=depth {
@@ -182,12 +196,18 @@ mod pimpl {
                 let last_eval = eval;
                 let window_size = 40;
                 eval = self.negamax(&mut context, current_depth, last_eval - window_size, last_eval + window_size);
+                if context.time_hit {
+                    break;
+                }
                 if (last_eval - eval).abs() >= window_size {
                     eval = self.negamax(&mut context, current_depth, i64::MIN + 1, i64::MAX);
+                    if context.time_hit {
+                        break;
+                    }
                 }
-                let abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
+                let abs_eval = if side == WHITE { eval } else { -eval };
 
-                let time_taken = start.elapsed().unwrap();
+                let time_taken = context.start_time.elapsed().unwrap();
                 println!(
                     "info depth {} score {} nodes {} nps {} time {} hashfull {}",
                     current_depth,
@@ -196,6 +216,10 @@ mod pimpl {
                     1000000000 * context.nodes as u128 / max(1, time_taken.as_nanos()),
                     time_taken.as_millis(),
                     self.transpositions.usage());
+
+                if time_taken.as_millis() >= context.target_time {
+                    break;
+                }
             }
 
             if context.best_move == NULL_MOVE {
@@ -284,6 +308,15 @@ mod pimpl {
         }
 
         fn negamax(&mut self, context: &mut SearchContext, depth: usize, mut alpha: i64, beta: i64) -> i64 {
+            if context.time_hit {
+                return 0;
+            }
+
+            if context.start_time.elapsed().unwrap().as_millis() >= context.target_time {
+                context.time_hit = true;
+                return 0;
+            }
+
             let side = self.side_to_move();
 
             if self.triple_repetition() || self.half_moves_clock >= 100 {
@@ -350,6 +383,15 @@ mod pimpl {
         }
 
         fn qsearch(&mut self, context: &mut SearchContext, depth_in: usize, mut alpha: i64, beta: i64) -> i64 {
+            if context.time_hit {
+                return 0;
+            }
+
+            if context.start_time.elapsed().unwrap().as_millis() >= context.target_time {
+                context.time_hit = true;
+                return 0;
+            }
+
             let side = self.side_to_move();
             let multiplier = if side == WHITE { 1 } else { -1 };
 
