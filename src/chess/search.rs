@@ -175,12 +175,12 @@ mod pimpl {
 
             let depth = options.depth.unwrap_or(usize::MAX);
             let mut context = SearchContext::new(depth);
-            let mut eval = 0;
+            let mut eval = self.last_eval;
 
             for current_depth in 1..=depth {
                 context.depth = current_depth;
                 let last_eval = eval;
-                let window_size = 33;
+                let window_size = 40;
                 eval = self.negamax(&mut context, current_depth, last_eval - window_size, last_eval + window_size);
                 if (last_eval - eval).abs() >= window_size {
                     eval = self.negamax(&mut context, current_depth, i64::MIN + 1, i64::MAX);
@@ -202,6 +202,7 @@ mod pimpl {
                 println!("info string null move selected as best, bug?");
             }
 
+            self.last_eval = -eval;
             context.best_move
         }
 

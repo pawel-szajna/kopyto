@@ -78,6 +78,8 @@ pub struct Board {
     check: [Option<bool>; 2],
     pub(super) attacks: [Option<u64>; 2],
     pub(super) moves: [Option<Vec<Move>>; 2],
+
+    pub(super) last_eval: i64,
 }
 
 impl Board {
@@ -110,6 +112,8 @@ impl Board {
             check: [None, None],
             attacks: [None, None],
             moves: [None, None],
+
+            last_eval: 0,
         }
     }
 

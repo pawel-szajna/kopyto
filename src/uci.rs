@@ -11,7 +11,7 @@ pub struct UCI {
 
 impl UCI {
     pub fn new() -> Self {
-        Self { board: Board::new(), last_position: String::new() }
+        Self { board: Board::from_starting_position(), last_position: String::new() }
     }
 
     pub fn run(&mut self) {
