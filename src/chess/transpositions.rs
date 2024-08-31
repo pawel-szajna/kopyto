@@ -155,22 +155,27 @@ pub struct Transpositions {
     scores: Box<[Entry]>,
 }
 
-impl Drop for Transpositions {
-    fn drop(&mut self) {
-        let elems = self.scores.iter().filter(|e| e.hash != 0).count();
-        println!("info string transposition table usage: {}/{} ({}%, {:.2}/{:.2} MB)",
-                 elems,
-                 TRANSPOSITION_TABLE_LENGTH,
-                 elems * 100 / TRANSPOSITION_TABLE_LENGTH,
-                 ((elems * size_of::<Entry>()) as f64) / 1048576.0,
-                 TRANSPOSITION_TABLE_SIZE as f64 / 1048576.0);
-    }
-}
-
 impl Transpositions {
     pub fn new() -> Self {
         Self {
             scores: vec![Entry::new(); TRANSPOSITION_TABLE_LENGTH].into_boxed_slice(),
+        }
+    }
+
+    pub fn usage(&self) -> usize {
+        let elems = self.scores.iter().filter(|e| e.hash != 0).count();
+        elems * 1000 / TRANSPOSITION_TABLE_LENGTH
+    }
+
+    pub fn clear(&mut self) {
+        self.scores.iter_mut().for_each(|x| *x = Entry::new());
+    }
+
+    pub fn get_move(&self, hash: u64) -> Option<Move> {
+        let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
+        match entry.hash == hash {
+            true => Some(entry.m),
+            false => None,
         }
     }
 

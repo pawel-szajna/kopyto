@@ -84,3 +84,11 @@ pub fn str_to_idx(pos: &str) -> usize {
     let rank = get_rank(&mut pos);
     coords_to_idx(file, rank)
 }
+
+pub fn eval_to_str(eval: i64) -> String {
+    if eval.abs() > 9000 {
+        format!("mate {}", eval.signum() * (1 + (10000 - eval.abs())) / 2)
+    } else {
+        format!("cp {}", eval)
+    }
+}

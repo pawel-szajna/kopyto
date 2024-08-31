@@ -1,7 +1,7 @@
 use crate::chess::board::Board;
 use crate::chess::moves::Move;
 use crate::chess::moves_generation::perft;
-use crate::chess::search;
+use crate::chess::{search, util};
 use crate::chess::search::Search;
 
 pub struct UCI {
@@ -143,11 +143,7 @@ impl UCI {
         println!(
             "info depth {} score {} nodes {} nps {}",
             result.depth,
-            if result.score.abs() > 9000 {
-                format!("mate {}", result.score.signum() * (1 + (10000 - result.score.abs())) / 2)
-            } else {
-                format!("cp {}", result.score)
-            },
+            util::eval_to_str(result.score),
             result.nodes,
             result.nps,
         );

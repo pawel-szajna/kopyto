@@ -151,6 +151,7 @@ mod pimpl {
     use rand::prelude::SliceRandom;
     use crate::chess::moves::Piece;
     use crate::chess::transpositions::Score::{Exact, LowerBound, UpperBound};
+    use crate::chess::util;
 
     const NULL_MOVE: Move = Move::new();
 
@@ -183,11 +184,28 @@ mod pimpl {
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> SearchResult {
             let start = SystemTime::now();
+            self.transpositions.clear();
 
             let depth = options.depth.unwrap_or(usize::MAX);
             let mut context = SearchContext::new(depth);
-            let eval = self.negamax(&mut context, options.depth.unwrap_or(usize::MAX), i64::MIN + 1, i64::MAX);
-            let abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
+            let mut eval = 0;
+            let mut abs_eval = 0;
+
+            for current_depth in 1..=depth {
+                context.depth = current_depth;
+                let last_eval = eval;
+                let window_size = 33;
+                eval = self.negamax(&mut context, current_depth, last_eval - window_size, last_eval + window_size);
+                if (last_eval - eval).abs() >= window_size {
+                    eval = self.negamax(&mut context, current_depth, i64::MIN + 1, i64::MAX);
+                }
+                abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
+
+                if current_depth != depth {
+                    println!("info depth {} score {} nodes {} hashfull {}",
+                             current_depth, util::eval_to_str(abs_eval), context.nodes, self.transpositions.usage());
+                }
+            }
 
             let time_taken = start.elapsed().unwrap();
 
@@ -223,27 +241,35 @@ mod pimpl {
                 Some(Piece::King) => 50,
             };
 
+            let hash_move = self.transpositions.get_move(self.key());
+
             moves.sort_by(|x, y| {
-                let x_target_mask = 1u64 << x.get_to();
-                let y_target_mask = 1u64 << y.get_to();
-                match x_target_mask & attacks == 0 {
-                    true => match y_target_mask & attacks == 0 {
-                        true => {
-                            let x_source_mask = 1u64 << x.get_from();
-                            let y_source_mask = 1u64 << y.get_from();
-                            let x_attacker_value = piece_value(self.check_piece(side, x_source_mask));
-                            let x_defender_value = piece_value(self.check_piece(opponent, x_target_mask));
-                            let y_attacker_value = piece_value(self.check_piece(side, y_source_mask));
-                            let y_defender_value = piece_value(self.check_piece(opponent, y_target_mask));
-                            let x_score = x_attacker_value - x_defender_value;
-                            let y_score = y_attacker_value - y_defender_value;
-                            x_score.cmp(&y_score)
-                        },
-                        false => std::cmp::Ordering::Less,
-                    },
-                    false => match y_target_mask & attacks == 0 {
-                        true => std::cmp::Ordering::Greater,
-                        false => std::cmp::Ordering::Equal,
+                match hash_move {
+                    Some(m) if x == &m => std::cmp::Ordering::Less,
+                    Some(m) if y == &m => std::cmp::Ordering::Greater,
+                    _ => {
+                        let x_target_mask = 1u64 << x.get_to();
+                        let y_target_mask = 1u64 << y.get_to();
+                        match x_target_mask & attacks == 0 {
+                            true => match y_target_mask & attacks == 0 {
+                                true => {
+                                    let x_source_mask = 1u64 << x.get_from();
+                                    let y_source_mask = 1u64 << y.get_from();
+                                    let x_attacker_value = piece_value(self.check_piece(side, x_source_mask));
+                                    let x_defender_value = piece_value(self.check_piece(opponent, x_target_mask));
+                                    let y_attacker_value = piece_value(self.check_piece(side, y_source_mask));
+                                    let y_defender_value = piece_value(self.check_piece(opponent, y_target_mask));
+                                    let x_score = x_attacker_value - x_defender_value;
+                                    let y_score = y_attacker_value - y_defender_value;
+                                    x_score.cmp(&y_score)
+                                },
+                                false => std::cmp::Ordering::Less,
+                            },
+                            false => match y_target_mask & attacks == 0 {
+                                true => std::cmp::Ordering::Greater,
+                                false => std::cmp::Ordering::Equal,
+                            }
+                        }
                     }
                 }
             })
@@ -312,7 +338,6 @@ mod pimpl {
             self.order_moves(&mut moves);
 
             let mut found_exact = false;
-            let mut best_move = 0;
 
             for m in moves {
                 self.make_move(m.clone());
@@ -328,7 +353,6 @@ mod pimpl {
                 if score > alpha {
                     best = m;
                     found_exact = true;
-                    best_move = key;
                     alpha = score;
 
                     if depth == context.depth {
@@ -337,7 +361,7 @@ mod pimpl {
                 }
             }
 
-            self.transpositions.set(best_move, depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
+            self.transpositions.set(self.key(), depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
 
             alpha
         }
@@ -361,7 +385,8 @@ mod pimpl {
                 alpha = score;
             }
 
-            let moves = self.generate_moves(true);
+            let mut moves = self.generate_moves(true);
+            self.order_moves(&mut moves);
 
             for capture in moves {
                 self.make_move(capture);
