@@ -1,3 +1,4 @@
+use scanner_rust::ScannerAscii;
 use crate::chess::board::Board;
 use crate::chess::moves::Move;
 use crate::chess::moves_generation::perft;
@@ -28,7 +29,7 @@ impl UCI {
                 "isready" => self.isready(),
                 "ucinewgame" => self.ucinewgame(),
                 cmd if cmd.starts_with("position") => self.position(cmd.strip_prefix("position ")),
-                cmd if cmd.starts_with("go") => self.go(cmd.strip_prefix("go ")),
+                cmd if cmd.starts_with("go") => self.go(cmd.strip_prefix("go").unwrap_or("").trim()),
                 _ => println!("info string unknown command"),
             }
         }
@@ -102,32 +103,30 @@ impl UCI {
         }
     }
 
-    fn parse_go_options(&self, options: &mut search::Options, cmd: Option<&str>) {
-        if cmd.is_none() {
-            return;
-        }
-        let mut cmd = cmd.unwrap();
-        if cmd.starts_with("infinite") {
-            options.depth = None;
-            cmd = (&cmd[8..]).trim();
-        }
-        if cmd.starts_with("depth") {
-            cmd = (&cmd[5..]).trim();
-            let end = cmd.find(' ');
-            if end.is_some() {
-                cmd = &cmd[0..end.unwrap()];
-            }
-            let depth = cmd.to_string().parse::<usize>();
-            match depth {
-                Err(what) => panic!("cannot parse: {}", what.to_string()),
-                Ok(depth) => options.depth = Some(depth),
+    fn parse_go_options(&self, options: &mut search::Options, cmd: &str) {
+        let mut scanner = ScannerAscii::new(cmd.as_bytes());
+        loop {
+            match scanner.next() {
+                Err(e) => println!("info string parsing failed: {}", e),
+                Ok(result) => match result {
+                    None => break,
+                    Some(command) => match command.as_str() {
+                        "infinite" => options.depth = None,
+                        "depth" => options.depth = scanner.next_usize().unwrap(),
+                        "wtime" => options.white_time = scanner.next_u64().unwrap().unwrap(),
+                        "btime" => options.black_time = scanner.next_u64().unwrap().unwrap(),
+                        "winc" => options.white_increment = scanner.next_u64().unwrap().unwrap(),
+                        "binc" => options.black_increment = scanner.next_u64().unwrap().unwrap(),
+                        _ => (),
+                    }
+                },
             }
         }
     }
 
-    fn go(&mut self, cmd: Option<&str>) {
-        if cmd.is_some_and(|cmd| cmd.starts_with("perft")) {
-            let cmd = cmd.unwrap().strip_prefix("perft ");
+    fn go(&mut self, cmd: &str) {
+        if cmd.starts_with("perft") {
+            let cmd = cmd.strip_prefix("perft ");
             let depth = cmd.unwrap().to_string().parse::<usize>();
             match depth {
                 Err(what) => panic!("cannot parse: {}", what.to_string()),
