@@ -20,7 +20,6 @@ pub struct UI {
 
     legal_moves: Vec<Move>,
 
-    evaluation: i64,
     side_cpu: Side,
 }
 
@@ -53,7 +52,6 @@ impl UI {
 
             legal_moves: Vec::new(),
 
-            evaluation: 0,
             side_cpu: board::BLACK,
         }
     }
@@ -106,19 +104,18 @@ impl UI {
 
             if side == self.side_cpu && !self.board.in_checkmate(self.side_cpu) {
                 let result = self.board.search(search::Options::new());
-                if result.m.get_to() == result.m.get_from() && result.m.get_to() == 0u16 {
-                    eprintln!("Tried making a null move with eval {}.{:2}", result.score / 100, (result.score % 100).abs());
+                if result.get_to() == result.get_from() && result.get_to() == 0u16 {
+                    eprintln!("Tried making a null move");
                 } else {
-                    eprintln!("Playing move {:?} eval {}.{:2}", result.m, result.score / 100, (result.score % 100).abs());
-                    self.board.make_move(result.m);
+                    eprintln!("Playing move {:?}", result);
+                    self.board.make_move(result);
                     suggestion = false;
                 }
-                self.evaluation = result.score;
             }
 
             if side != self.side_cpu && !self.board.in_checkmate(side) && !suggestion {
                 let result = self.board.search(search::Options::new());
-                eprintln!("CPU suggestion: {:?} eval {}.{:2}", result.m, result.score / 100, (result.score % 100).abs());
+                eprintln!("CPU suggestion: {:?}", result);
                 suggestion = true;
             }
 

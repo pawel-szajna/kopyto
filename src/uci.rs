@@ -1,7 +1,7 @@
 use crate::chess::board::Board;
 use crate::chess::moves::Move;
 use crate::chess::moves_generation::perft;
-use crate::chess::{search, util};
+use crate::chess::search;
 use crate::chess::search::Search;
 
 pub struct UCI {
@@ -140,13 +140,6 @@ impl UCI {
         self.parse_go_options(&mut options, cmd);
         let result = self.board.search(options);
 
-        println!(
-            "info depth {} score {} nodes {} nps {}",
-            result.depth,
-            util::eval_to_str(result.score),
-            result.nodes,
-            result.nps,
-        );
-        println!("bestmove {}", result.m.to_uci());
+        println!("bestmove {}", result.to_uci());
     }
 }

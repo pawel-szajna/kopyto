@@ -121,22 +121,8 @@ impl Options {
     }
 }
 
-pub struct SearchResult {
-    pub m: Move,
-    pub score: i64,
-    pub depth: u64,
-    pub nodes: u64,
-    pub nps: u128,
-}
-
-impl SearchResult {
-    pub fn new(m: Move, score: i64, depth: u64, nodes: u64, nps: u128) -> Self {
-        Self { m, score, depth, nodes, nps }
-    }
-}
-
 pub trait Search: pimpl::SearchImpl {
-    fn search(&mut self, options: Options) -> SearchResult {
+    fn search(&mut self, options: Options) -> Move {
         self.search_impl(options)
     }
 }
@@ -144,6 +130,7 @@ pub trait Search: pimpl::SearchImpl {
 impl Search for Board {}
 
 mod pimpl {
+    use std::cmp::max;
     use std::time::SystemTime;
     use super::*;
     use crate::chess::board::{BLACK, WHITE};
@@ -172,7 +159,7 @@ mod pimpl {
     }
 
     pub trait SearchImpl {
-        fn search_impl(&mut self, options: Options) -> SearchResult;
+        fn search_impl(&mut self, options: Options) -> Move;
 
         fn order_moves(&mut self, moves: &mut Vec<Move>);
         fn eval(&self) -> i64;
@@ -182,14 +169,13 @@ mod pimpl {
     }
 
     impl SearchImpl for Board {
-        fn search_impl(&mut self, options: Options) -> SearchResult {
+        fn search_impl(&mut self, options: Options) -> Move {
             let start = SystemTime::now();
             self.transpositions.clear();
 
             let depth = options.depth.unwrap_or(usize::MAX);
             let mut context = SearchContext::new(depth);
             let mut eval = 0;
-            let mut abs_eval = 0;
 
             for current_depth in 1..=depth {
                 context.depth = current_depth;
@@ -199,28 +185,24 @@ mod pimpl {
                 if (last_eval - eval).abs() >= window_size {
                     eval = self.negamax(&mut context, current_depth, i64::MIN + 1, i64::MAX);
                 }
-                abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
+                let abs_eval = if self.side_to_move() == WHITE { eval } else { -eval };
 
-                if current_depth != depth {
-                    println!("info depth {} score {} nodes {} hashfull {}",
-                             current_depth, util::eval_to_str(abs_eval), context.nodes, self.transpositions.usage());
-                }
+                let time_taken = start.elapsed().unwrap();
+                println!(
+                    "info depth {} score {} nodes {} nps {} time {} hashfull {}",
+                    current_depth,
+                    util::eval_to_str(abs_eval),
+                    context.nodes,
+                    1000000000 * context.nodes as u128 / max(1, time_taken.as_nanos()),
+                    time_taken.as_millis(),
+                    self.transpositions.usage());
             }
-
-            let time_taken = start.elapsed().unwrap();
 
             if context.best_move == NULL_MOVE {
                 println!("info string null move selected as best, bug?");
             }
 
-            let nodes = context.nodes;
-            let nps = if time_taken.as_nanos() > 0 {
-                1000000000 * nodes as u128 / time_taken.as_nanos()
-            } else {
-                0
-            };
-
-            SearchResult::new(context.best_move, abs_eval, context.depth as u64, nodes, nps)
+            context.best_move
         }
 
         fn order_moves(&mut self, moves: &mut Vec<Move>) {
