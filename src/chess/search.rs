@@ -142,6 +142,7 @@ mod pimpl {
 
     pub struct SearchContext {
         depth: usize,
+        seldepth: usize,
         best_move: Move,
         nodes: u64,
         start_time: SystemTime,
@@ -153,6 +154,7 @@ mod pimpl {
         pub fn new(depth: usize, start_time: SystemTime, target_time: u128) -> Self {
             Self {
                 depth,
+                seldepth: 0,
                 best_move: NULL_MOVE,
                 nodes: 0,
                 start_time,
@@ -209,8 +211,9 @@ mod pimpl {
 
                 let time_taken = context.start_time.elapsed().unwrap();
                 println!(
-                    "info depth {} score {} nodes {} nps {} time {} hashfull {}",
+                    "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {}",
                     current_depth,
+                    context.seldepth,
                     util::eval_to_str(abs_eval),
                     context.nodes,
                     1000000000 * context.nodes as u128 / max(1, time_taken.as_nanos()),
@@ -378,6 +381,7 @@ mod pimpl {
             }
 
             self.transpositions.set(self.key(), depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
+            context.seldepth = max(context.seldepth, context.depth - depth);
 
             alpha
         }
@@ -425,6 +429,8 @@ mod pimpl {
                     alpha = score;
                 }
             }
+
+            context.seldepth = max(context.seldepth, context.depth + depth_in);
 
             alpha
         }
