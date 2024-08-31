@@ -185,31 +185,41 @@ mod pimpl {
             let time_advantage = our_time as i64 - opponent_time as i64;
             let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
 
-            let target_time = our_time / 40 + max(0, time_advantage_modifier) as u64;
+            let target_time = our_time / if self.full_moves_count < 5 { 25 } else { 8 } + max(0, time_advantage_modifier) as u64;
 
             println!("info string our_time {} opponent_time {} time_advantage {} advantage_modifier {} target_time {}", our_time ,opponent_time, time_advantage, time_advantage_modifier, target_time);
 
             let depth = options.depth.unwrap_or(usize::MAX);
             let mut context = SearchContext::new(depth, start, max(target_time as u128, MIN_MOVE_TIME));
             let mut eval = self.last_eval;
+            let mut best_move = NULL_MOVE;
 
             for current_depth in 1..=depth {
                 context.depth = current_depth;
+                let iter_start = SystemTime::now();
                 let last_eval = eval;
+
                 let window_size = 40;
+
                 eval = self.negamax(&mut context, current_depth, last_eval - window_size, last_eval + window_size);
                 if context.time_hit {
                     break;
                 }
+
                 if (last_eval - eval).abs() >= window_size {
                     eval = self.negamax(&mut context, current_depth, i64::MIN + 1, i64::MAX);
                     if context.time_hit {
                         break;
                     }
                 }
+
+                best_move = context.best_move;
+
                 let abs_eval = if side == WHITE { eval } else { -eval };
 
                 let time_taken = context.start_time.elapsed().unwrap();
+                let iter_taken = iter_start.elapsed().unwrap();
+
                 println!(
                     "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {}",
                     current_depth,
@@ -220,17 +230,17 @@ mod pimpl {
                     time_taken.as_millis(),
                     self.transpositions.usage());
 
-                if time_taken.as_millis() >= context.target_time {
+                if time_taken.as_millis() >= context.target_time || iter_taken.as_millis() > context.target_time / 8 {
                     break;
                 }
             }
 
-            if context.best_move == NULL_MOVE {
+            if best_move == NULL_MOVE {
                 println!("info string null move selected as best, bug?");
             }
 
             self.last_eval = -eval;
-            context.best_move
+            best_move
         }
 
         fn order_moves(&mut self, moves: &mut Vec<Move>) {
