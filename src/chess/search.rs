@@ -103,6 +103,7 @@ pub struct Options {
     pub white_increment: u64,
     #[allow(dead_code)]
     pub black_increment: u64,
+    pub target_time: Option<u64>,
     pub depth: Option<usize>,
 }
 
@@ -113,6 +114,7 @@ impl Options {
             black_time: u64::MAX,
             white_increment: 0,
             black_increment: 0,
+            target_time: None,
             depth: None,
         }
     }
@@ -185,7 +187,10 @@ mod pimpl {
             let time_advantage = our_time as i64 - opponent_time as i64;
             let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
 
-            let target_time = our_time / if self.full_moves_count < 5 { 25 } else { 8 } + max(0, time_advantage_modifier) as u64;
+            let target_time = match options.target_time {
+                Some(target_time) => target_time - 100,
+                None => our_time / if self.full_moves_count < 5 { 25 } else { 8 } + max(0, time_advantage_modifier) as u64,
+            };
 
             println!("info string our_time {} opponent_time {} time_advantage {} advantage_modifier {} target_time {}", our_time ,opponent_time, time_advantage, time_advantage_modifier, target_time);
 

@@ -117,6 +117,7 @@ impl UCI {
                         "btime" => options.black_time = scanner.next_u64().unwrap().unwrap(),
                         "winc" => options.white_increment = scanner.next_u64().unwrap().unwrap(),
                         "binc" => options.black_increment = scanner.next_u64().unwrap().unwrap(),
+                        "movetime" => options.target_time = scanner.next_u64().unwrap(),
                         _ => (),
                     }
                 },
