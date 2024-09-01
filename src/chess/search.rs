@@ -322,6 +322,22 @@ mod pimpl {
 
             let hash_move = self.transpositions.get_move(self.key());
 
+            let mut verified = [false; 64];
+            let mut pieces = [None; 64];
+
+            for m in &*moves {
+                let source = m.get_from() as usize;
+                let target = m.get_to() as usize;
+                if !verified[source] {
+                    pieces[source] = self.check_piece(side, 1u64 << source);
+                    verified[source] = true;
+                }
+                if !verified[target] {
+                    pieces[target] = self.check_piece(opponent, 1u64 << target);
+                    verified[target] = true;
+                }
+            }
+
             moves.sort_by(|x, y| {
                 match hash_move {
                     Some(m) if x == &m => std::cmp::Ordering::Less,
@@ -332,12 +348,10 @@ mod pimpl {
                         match x_target_mask & attacks == 0 {
                             true => match y_target_mask & attacks == 0 {
                                 true => {
-                                    let x_source_mask = 1u64 << x.get_from();
-                                    let y_source_mask = 1u64 << y.get_from();
-                                    let x_attacker_value = piece_value(self.check_piece(side, x_source_mask));
-                                    let x_defender_value = piece_value(self.check_piece(opponent, x_target_mask));
-                                    let y_attacker_value = piece_value(self.check_piece(side, y_source_mask));
-                                    let y_defender_value = piece_value(self.check_piece(opponent, y_target_mask));
+                                    let x_attacker_value = piece_value(pieces[x.get_from() as usize]);
+                                    let x_defender_value = piece_value(pieces[x.get_to() as usize]);
+                                    let y_attacker_value = piece_value(pieces[y.get_from() as usize]);
+                                    let y_defender_value = piece_value(pieces[y.get_to() as usize]);
                                     let x_score = x_attacker_value - x_defender_value;
                                     let y_score = y_attacker_value - y_defender_value;
                                     x_score.cmp(&y_score)
@@ -374,7 +388,7 @@ mod pimpl {
             while mask != 0 {
                 let pos = mask.trailing_zeros() as usize;
                 score += value + weights[pos];
-                mask ^= 1u64 << pos;
+                mask &= mask - 1;
             }
             score
         }
