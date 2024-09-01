@@ -79,26 +79,8 @@ fn perft_impl(board: &mut Board, depth: usize, init: bool) -> u64 {
 }
 
 mod attacks {
+    use crate::chess::magics::Magics;
     use super::*;
-
-    fn slide(idx: usize, diff: isize, boundary: u64, occupied: u64) -> u64 {
-        let mut slider = 1u64 << idx;
-        let mut attacks = 0;
-
-        while slider & boundary != 0 {
-            if diff >= 0 {
-                slider = slider.checked_shl(diff as u32).unwrap_or(0);
-            } else {
-                slider = slider.checked_shr(-diff as u32).unwrap_or(0);
-            }
-            attacks |= slider;
-            if occupied & slider != 0 {
-                break;
-            }
-        }
-
-        attacks
-    }
 
     pub fn pawn(side: Side, idx: usize) -> u64 {
         masks::PAWN_TARGETS[side][idx]
@@ -108,22 +90,12 @@ mod attacks {
         masks::KNIGHT_TARGETS[idx]
     }
 
-    pub fn bishop(idx: usize, occupied: u64) -> u64 {
-        let mut attacks = 0;
-        attacks |= slide(idx, -7, !(masks::RANKS[0] | masks::FILES[7]), occupied);
-        attacks |= slide(idx, -9, !(masks::RANKS[0] | masks::FILES[0]), occupied);
-        attacks |= slide(idx, 7, !(masks::RANKS[7] | masks::FILES[0]), occupied);
-        attacks |= slide(idx, 9, !(masks::RANKS[7] | masks::FILES[7]), occupied);
-        attacks
+    pub fn bishop(idx: usize, occupied: u64, magics: &Magics) -> u64 {
+        magics.get(idx, occupied)
     }
 
-    pub fn rook(idx: usize, occupied: u64) -> u64 {
-        let mut attacks = 0;
-        attacks |= slide(idx, -1, !masks::FILES[0], occupied);
-        attacks |= slide(idx, 1, !masks::FILES[7], occupied);
-        attacks |= slide(idx, 8, !masks::RANKS[7], occupied);
-        attacks |= slide(idx, -8, !masks::RANKS[0], occupied);
-        attacks
+    pub fn rook(idx: usize, occupied: u64, magics: &Magics) -> u64 {
+        magics.get(idx, occupied)
     }
 
     pub fn king(idx: usize) -> u64 {
@@ -248,14 +220,14 @@ mod pimpl {
                 check_mask |= knights;
             }
 
-            let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece);
+            let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece, &self.bishop_magics);
             if bishops != 0 {
                 checks += 1;
                 let attacker_idx = bishops.trailing_zeros() as usize;
                 check_mask |= masks::BETWEEN[king_idx][attacker_idx] | (1u64 << attacker_idx);
             }
 
-            let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece);
+            let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece, &self.rook_magics);
             if rooks != 0 {
                 checks += rooks.count_ones() as u64;
                 let attacker_idx = rooks.trailing_zeros() as usize;
@@ -300,14 +272,14 @@ mod pimpl {
             let mut bishops = self.bishops[side] | self.queens[side];
             while bishops != 0 {
                 let bishop_idx = bishops.trailing_zeros() as usize;
-                mask |= attacks::bishop(bishop_idx, occupied);
+                mask |= attacks::bishop(bishop_idx, occupied, &self.bishop_magics);
                 bishops &= bishops - 1;
             }
 
             let mut rooks = self.rooks[side] | self.queens[side];
             while rooks != 0 {
                 let rook_idx = rooks.trailing_zeros() as usize;
-                mask |= attacks::rook(rook_idx, occupied);
+                mask |= attacks::rook(rook_idx, occupied, &self.rook_magics);
                 rooks &= rooks - 1;
             }
 
@@ -338,7 +310,7 @@ mod pimpl {
             self.pin_mask(
                 side,
                 king_idx,
-                attacks::rook(king_idx, self.occupied[opponent]) & (self.rooks[opponent] | self.queens[opponent]),
+                attacks::rook(king_idx, self.occupied[opponent], &self.rook_magics) & (self.rooks[opponent] | self.queens[opponent]),
             )
         }
 
@@ -348,7 +320,7 @@ mod pimpl {
             self.pin_mask(
                 side,
                 king_idx,
-                attacks::bishop(king_idx, self.occupied[opponent]) & (self.bishops[opponent] | self.queens[opponent]),
+                attacks::bishop(king_idx, self.occupied[opponent], &self.bishop_magics) & (self.bishops[opponent] | self.queens[opponent]),
             )
         }
 
@@ -519,7 +491,7 @@ mod pimpl {
                     if king_mask != 0 && rook_mask != 0 {
                         let pawns_mask = enemy_pawn | source;
                         let king_idx = self.kings[side].trailing_zeros() as usize;
-                        if attacks::rook(king_idx, self.any_piece & !pawns_mask) & rook_mask != 0 {
+                        if attacks::rook(king_idx, self.any_piece & !pawns_mask, &self.rook_magics) & rook_mask != 0 {
                             break;
                         }
                     }
@@ -561,23 +533,23 @@ mod pimpl {
 
         fn generate_rook(&self, rook_idx: usize, parallel_pin_mask: u64) -> u64 {
             match parallel_pin_mask & (1u64 << rook_idx) != 0 {
-                true => attacks::rook(rook_idx, self.any_piece) & parallel_pin_mask,
-                false => attacks::rook(rook_idx, self.any_piece),
+                true => attacks::rook(rook_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
+                false => attacks::rook(rook_idx, self.any_piece, &self.rook_magics),
             }
         }
 
         fn generate_bishop(&self, bishop_idx: usize, diagonal_pin_mask: u64) -> u64 {
             match diagonal_pin_mask & (1u64 << bishop_idx) != 0 {
-                true => attacks::bishop(bishop_idx, self.any_piece) & diagonal_pin_mask,
-                false => attacks::bishop(bishop_idx, self.any_piece),
+                true => attacks::bishop(bishop_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
+                false => attacks::bishop(bishop_idx, self.any_piece, &self.bishop_magics),
             }
         }
 
         fn generate_queen(&self, queen_idx: usize, parallel_pin_mask: u64, diagonal_pin_mask: u64) -> u64 {
             match 1 << queen_idx {
-                mask if mask & diagonal_pin_mask != 0 => attacks::bishop(queen_idx, self.any_piece) & diagonal_pin_mask,
-                mask if mask & parallel_pin_mask != 0 => attacks::rook(queen_idx, self.any_piece) & parallel_pin_mask,
-                _ => attacks::bishop(queen_idx, self.any_piece) | attacks::rook(queen_idx, self.any_piece),
+                mask if mask & diagonal_pin_mask != 0 => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
+                mask if mask & parallel_pin_mask != 0 => attacks::rook(queen_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
+                _ => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) | attacks::rook(queen_idx, self.any_piece, &self.rook_magics),
             }
         }
     }

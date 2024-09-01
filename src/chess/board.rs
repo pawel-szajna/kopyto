@@ -1,3 +1,4 @@
+use crate::chess::magics::{create_bishop_magics, create_rook_magics, Magics};
 use crate::chess::transpositions::{Transpositions, Zobrist};
 use super::masks;
 use super::moves::*;
@@ -87,6 +88,9 @@ pub struct Board {
     pub(super) moves: [Option<Vec<Move>>; 2],
 
     pub(super) last_eval: i64,
+
+    pub(super) bishop_magics: Magics,
+    pub(super) rook_magics: Magics,
 }
 
 impl Board {
@@ -122,6 +126,9 @@ impl Board {
             moves: [None, None],
 
             last_eval: 0,
+
+            bishop_magics: create_bishop_magics(),
+            rook_magics: create_rook_magics(),
         }
     }
 
