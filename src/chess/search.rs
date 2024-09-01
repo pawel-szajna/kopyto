@@ -187,17 +187,34 @@ mod pimpl {
         fn qsearch(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
     }
 
-    fn print_search_info(context: &SearchContext, current_depth: i64, score: i64, transpositions: &Transpositions) {
+    fn get_pv(board: &mut Board) -> String {
+        let moves = board.generate_moves(false);
+        let best = board.transpositions.get_move(board.key());
+        match best {
+            Some(m) if moves.contains(&m) => {
+                board.make_move(m);
+                let result = format!(" {:?}{}", m, get_pv(board));
+                board.unmake_move();
+                result
+            },
+            _ => String::new(),
+        }
+    }
+
+    fn print_search_info(board: &mut Board, context: &SearchContext, current_depth: i64, score: i64) {
         let time = context.start_time.elapsed().unwrap();
+        let pv = get_pv(board);
         println!(
-            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {}",
+            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} pv{}",
             current_depth,
             context.seldepth,
             util::eval_to_str(score),
             context.nodes,
             1000000000 * context.nodes as u128 / max(1, time.as_nanos()),
             time.as_millis(),
-            transpositions.usage());
+            board.transpositions.usage(),
+            if pv.is_empty() { String::from(" ?") } else { pv },
+        );
     }
 
     fn out_of_time(context: &mut SearchContext) -> bool {
@@ -277,7 +294,7 @@ mod pimpl {
                 let time_taken = context.start_time.elapsed().unwrap();
                 let iter_taken = iter_start.elapsed().unwrap();
 
-                print_search_info(&context, context.depth, abs_eval, &self.transpositions);
+                print_search_info(self, &context, context.depth, abs_eval);
 
                 if time_taken.as_millis() >= context.target_time || iter_taken.as_millis() > context.target_time / 8 {
                     break;
@@ -289,7 +306,7 @@ mod pimpl {
             }
 
             if context.time_hit {
-                print_search_info(&context, context.depth - 1, abs_eval, &self.transpositions);
+                print_search_info(self, &context, context.depth - 1, abs_eval);
             }
 
             self.last_eval = -eval;
