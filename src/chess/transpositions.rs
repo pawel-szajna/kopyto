@@ -129,10 +129,19 @@ pub enum Score {
     UpperBound(i64),
 }
 
+impl Score {
+    pub fn from_alpha(alpha: i64, is_exact: bool) -> Self {
+        match is_exact {
+            true => Self::Exact(alpha),
+            false => Self::UpperBound(alpha),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Entry {
     hash: u64,
-    depth: usize,
+    depth: i64,
     score: Score,
     m: Move,
 }
@@ -179,7 +188,7 @@ impl Transpositions {
         }
     }
 
-    pub fn get(&self, hash: u64, depth: usize, alpha: i64, beta: i64) -> Option<(i64, Move)> {
+    pub fn get(&self, hash: u64, depth: i64, alpha: i64, beta: i64) -> Option<(i64, Move)> {
         let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
         if entry.hash != hash || entry.depth < depth {
             return None;
@@ -193,7 +202,7 @@ impl Transpositions {
         }
     }
 
-    pub fn set(&mut self, hash: u64, depth: usize, score: Score, m: Move) {
+    pub fn set(&mut self, hash: u64, depth: i64, score: Score, m: Move) {
         let idx = hash as usize % TRANSPOSITION_TABLE_LENGTH;
         if self.scores[idx].hash != hash || self.scores[idx].depth <= depth {
             self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH] = Entry {

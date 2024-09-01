@@ -112,7 +112,7 @@ impl UCI {
                     None => break,
                     Some(command) => match command.as_str() {
                         "infinite" => options.depth = None,
-                        "depth" => options.depth = scanner.next_usize().unwrap(),
+                        "depth" => options.depth = scanner.next_i64().unwrap(),
                         "wtime" => options.white_time = scanner.next_u64().unwrap().unwrap(),
                         "btime" => options.black_time = scanner.next_u64().unwrap().unwrap(),
                         "winc" => options.white_increment = scanner.next_u64().unwrap().unwrap(),

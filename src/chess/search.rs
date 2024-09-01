@@ -104,7 +104,7 @@ pub struct Options {
     #[allow(dead_code)]
     pub black_increment: u64,
     pub target_time: Option<u64>,
-    pub depth: Option<usize>,
+    pub depth: Option<i64>,
 }
 
 impl Options {
@@ -129,37 +129,39 @@ pub trait Search: pimpl::SearchImpl {
 impl Search for Board {}
 
 mod pimpl {
-    use std::cmp::max;
+    use std::cmp::{min, max};
     use std::time::SystemTime;
     use super::*;
     use crate::chess::board::{BLACK, WHITE};
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use crate::chess::moves::Piece;
-    use crate::chess::transpositions::Score::{Exact, LowerBound, UpperBound};
-    use crate::chess::transpositions::Transpositions;
+    use crate::chess::transpositions::{Score, Transpositions};
     use crate::chess::util;
 
     const NULL_MOVE: Move = Move::new();
     const MIN_MOVE_TIME: u128 = 200;
+    const MAX_DEPTH: i64 = 100;
 
     pub struct SearchContext {
-        depth: usize,
-        seldepth: usize,
+        depth: i64,
+        seldepth: i64,
         best_move: Move,
         nodes: u64,
+        clock_queries: usize,
         start_time: SystemTime,
         target_time: u128,
         time_hit: bool,
     }
 
     impl SearchContext {
-        pub fn new(depth: usize, start_time: SystemTime, target_time: u128) -> Self {
+        pub fn new(depth: i64, start_time: SystemTime, target_time: u128) -> Self {
             Self {
                 depth,
                 seldepth: 0,
                 best_move: NULL_MOVE,
                 nodes: 0,
+                clock_queries: 0,
                 start_time,
                 target_time,
                 time_hit: false,
@@ -177,14 +179,14 @@ mod pimpl {
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
 
         fn draw_conditions(&mut self) -> bool;
-        fn break_conditions(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> Option<i64>;
+        fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64>;
 
-        fn negamax(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> i64;
-        fn zero_window(&mut self, context: &mut SearchContext, depth: usize, beta: i64) -> i64;
-        fn qsearch(&mut self, context: &mut SearchContext, depth_in: usize, alpha: i64, beta: i64) -> i64;
+        fn negamax(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
+        fn zero_window(&mut self, context: &mut SearchContext, depth: i64, beta: i64) -> i64;
+        fn qsearch(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
     }
 
-    fn print_search_info(context: &SearchContext, current_depth: usize, score: i64, transpositions: &Transpositions) {
+    fn print_search_info(context: &SearchContext, current_depth: i64, score: i64, transpositions: &Transpositions) {
         let time = context.start_time.elapsed().unwrap();
         println!(
             "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {}",
@@ -202,9 +204,16 @@ mod pimpl {
             return true;
         }
 
-        if context.start_time.elapsed().unwrap().as_millis() >= context.target_time {
-            context.time_hit = true;
-            return true;
+        // profiler actually said that this was quite costly, but since we are processing
+        // millions of nodes per second, checking the clock once every 1000th is probably
+        // acceptable
+        context.clock_queries += 1;
+        if context.clock_queries > 1000 {
+            context.clock_queries = 0;
+            if context.start_time.elapsed().unwrap().as_millis() >= context.target_time {
+                context.time_hit = true;
+                return true;
+            }
         }
 
         false
@@ -236,7 +245,7 @@ mod pimpl {
 
             println!("info string our_time {} opponent_time {} time_advantage {} advantage_modifier {} target_time {}", our_time ,opponent_time, time_advantage, time_advantage_modifier, target_time);
 
-            let depth = options.depth.unwrap_or(usize::MAX);
+            let depth = min(options.depth.unwrap_or(i64::MAX), MAX_DEPTH);
             let mut context = SearchContext::new(depth, start, max(target_time as u128, MIN_MOVE_TIME));
             let mut eval = self.last_eval;
             let mut abs_eval = 0;
@@ -374,7 +383,7 @@ mod pimpl {
             self.triple_repetition() || self.half_moves_clock >= 100
         }
 
-        fn break_conditions(&mut self, context: &mut SearchContext, depth: usize, alpha: i64, beta: i64) -> Option<i64> {
+        fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64> {
             if out_of_time(context) {
                 return Some(0);
             }
@@ -395,7 +404,7 @@ mod pimpl {
             None
         }
 
-        fn negamax(&mut self, context: &mut SearchContext, depth: usize, mut alpha: i64, beta: i64) -> i64 {
+        fn negamax(&mut self, context: &mut SearchContext, depth: i64, mut alpha: i64, beta: i64) -> i64 {
             if let Some(score) = self.break_conditions(context, depth, alpha, beta) {
                 return score;
             }
@@ -433,8 +442,12 @@ mod pimpl {
                 let score = -self.negamax(context, depth - 1, -beta, -alpha);
                 self.unmake_move();
 
+                if context.time_hit {
+                    return 0;
+                }
+
                 if score >= beta {
-                    self.transpositions.set(key, depth, LowerBound(beta), m);
+                    self.transpositions.set(key, depth, Score::LowerBound(beta), m);
                     return beta;
                 }
 
@@ -449,13 +462,13 @@ mod pimpl {
                 }
             }
 
-            self.transpositions.set(self.key(), depth, if found_exact { Exact(alpha) } else { UpperBound(alpha) }, best);
+            self.transpositions.set(self.key(), depth, Score::from_alpha(alpha, found_exact), best);
             context.seldepth = max(context.seldepth, context.depth - depth);
 
             alpha
         }
 
-        fn zero_window(&mut self, context: &mut SearchContext, depth: usize, beta: i64) -> i64 {
+        fn zero_window(&mut self, context: &mut SearchContext, depth: i64, beta: i64) -> i64 {
             if let Some(score) = self.break_conditions(context, depth, beta - 1, beta) {
                 return score;
             }
@@ -467,9 +480,9 @@ mod pimpl {
             0
         }
 
-        fn qsearch(&mut self, context: &mut SearchContext, depth_in: usize, mut alpha: i64, beta: i64) -> i64 {
-            if out_of_time(context) {
-                return 0;
+        fn qsearch(&mut self, context: &mut SearchContext, depth: i64, mut alpha: i64, beta: i64) -> i64 {
+            if let Some(score) = self.break_conditions(context, depth, alpha, beta) {
+                return score;
             }
 
             let side = self.side_to_move();
@@ -477,12 +490,8 @@ mod pimpl {
 
             context.nodes += 1;
 
-            if self.draw_conditions() {
-                return 0;
-            }
-
             let score = match self.in_checkmate(side) {
-                true => -(10000 - (context.depth as i64 + depth_in as i64)),
+                true => -(10000 - (context.depth - depth)),
                 false => self.eval() * multiplier,
             };
 
@@ -495,21 +504,33 @@ mod pimpl {
             }
 
             let moves = self.get_moves(true);
+            let mut best = NULL_MOVE;
+            let mut found_exact = false;
 
             for capture in moves {
                 self.make_move(capture);
-                let score = -self.qsearch(context, depth_in + 1, -beta, -alpha);
+                let score = -self.qsearch(context, depth - 1, -beta, -alpha);
                 self.unmake_move();
+
+                if context.time_hit {
+                    return 0;
+                }
 
                 if score >= beta {
                     return beta;
                 }
+
                 if score > alpha {
                     alpha = score;
+                    best = capture;
+                    found_exact = true;
                 }
             }
 
-            context.seldepth = max(context.seldepth, context.depth + depth_in);
+            if best != NULL_MOVE {
+                self.transpositions.set(self.key(), depth, Score::from_alpha(alpha, found_exact), best);
+                context.seldepth = max(context.seldepth, context.depth - depth);
+            }
 
             alpha
         }
