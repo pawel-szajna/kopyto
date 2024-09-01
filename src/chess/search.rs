@@ -223,7 +223,6 @@ mod pimpl {
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> Move {
             let start = SystemTime::now();
-            self.transpositions.clear();
 
             let side = self.side_to_move();
             let our_time = if side == WHITE { options.white_time } else { options.black_time };

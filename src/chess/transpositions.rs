@@ -157,7 +157,7 @@ impl Entry {
     }
 }
 
-const TRANSPOSITION_TABLE_SIZE: usize = 24 * 1024 * 1024;
+const TRANSPOSITION_TABLE_SIZE: usize = 64 * 1024 * 1024;
 const TRANSPOSITION_TABLE_LENGTH: usize = TRANSPOSITION_TABLE_SIZE / size_of::<Entry>();
 
 pub struct Transpositions {
@@ -176,6 +176,7 @@ impl Transpositions {
         elems * 1000 / TRANSPOSITION_TABLE_LENGTH
     }
 
+    #[allow(dead_code)] // TODO decide what to do
     pub fn clear(&mut self) {
         self.scores.iter_mut().for_each(|x| *x = Entry::new());
     }
