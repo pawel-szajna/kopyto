@@ -338,34 +338,22 @@ mod pimpl {
                 }
             }
 
-            moves.sort_by(|x, y| {
-                match hash_move {
-                    Some(m) if x == &m => std::cmp::Ordering::Less,
-                    Some(m) if y == &m => std::cmp::Ordering::Greater,
+            moves.sort_by_cached_key(|m| {
+                -match hash_move {
+                    Some(hashed) if &hashed == m => 10000,
                     _ => {
-                        let x_target_mask = 1u64 << x.get_to();
-                        let y_target_mask = 1u64 << y.get_to();
-                        match x_target_mask & attacks == 0 {
-                            true => match y_target_mask & attacks == 0 {
-                                true => {
-                                    let x_attacker_value = piece_value(pieces[x.get_from() as usize]);
-                                    let x_defender_value = piece_value(pieces[x.get_to() as usize]);
-                                    let y_attacker_value = piece_value(pieces[y.get_from() as usize]);
-                                    let y_defender_value = piece_value(pieces[y.get_to() as usize]);
-                                    let x_score = x_attacker_value - x_defender_value;
-                                    let y_score = y_attacker_value - y_defender_value;
-                                    x_score.cmp(&y_score)
-                                },
-                                false => std::cmp::Ordering::Less,
-                            },
-                            false => match y_target_mask & attacks == 0 {
-                                true => std::cmp::Ordering::Greater,
-                                false => std::cmp::Ordering::Equal,
+                        let target_mask = 1u64 << m.get_to();
+                        match target_mask & attacks != 0 {
+                            false => 0,
+                            true => {
+                                let defender_value = piece_value(pieces[m.get_to() as usize]);
+                                let attacker_value = piece_value(pieces[m.get_from() as usize]);
+                                defender_value * 10 - attacker_value
                             }
                         }
-                    }
+                    },
                 }
-            })
+            });
         }
 
         fn eval(&self) -> i64 {
