@@ -22,6 +22,8 @@ struct History {
     promotion: bool,
     en_passant: u64,
     attacks: [Option<u64>; 2],
+    check: [Option<bool>; 2],
+    checkmate: [Option<bool>; 2],
     hash: u64,
 }
 
@@ -33,6 +35,8 @@ impl History {
         castle_queenside: ColorBool,
         half_moves: u32,
         en_passant: u64,
+        check: [Option<bool>; 2],
+        checkmate: [Option<bool>; 2],
         hash: u64,
     ) -> Self {
         Self {
@@ -45,6 +49,8 @@ impl History {
             promotion: false,
             en_passant,
             attacks: [None, None],
+            check,
+            checkmate,
             hash,
         }
     }
@@ -76,6 +82,7 @@ pub struct Board {
 
     pub(super) en_passant: u64,
     check: [Option<bool>; 2],
+    checkmate: [Option<bool>; 2],
     pub(super) attacks: [Option<u64>; 2],
     pub(super) moves: [Option<Vec<Move>>; 2],
 
@@ -110,6 +117,7 @@ impl Board {
 
             en_passant: 0,
             check: [None, None],
+            checkmate: [None, None],
             attacks: [None, None],
             moves: [None, None],
 
@@ -380,9 +388,16 @@ impl Board {
     }
 
     pub fn in_checkmate(&mut self, side: Side) -> bool {
-        match self.in_check(side) {
-            false => false,
-            true => self.generate_side_moves(side, false).is_empty(),
+        match self.checkmate[side] {
+            Some(value) => value,
+            None => {
+                let is_in_checkmate = match self.in_check(side) {
+                    false => false,
+                    true => self.generate_side_moves(side, false).is_empty(),
+                };
+                self.checkmate[side] = Some(is_in_checkmate);
+                is_in_checkmate
+            }
         }
     }
 
@@ -455,6 +470,8 @@ impl Board {
             self.castle_queenside,
             self.half_moves_clock,
             self.en_passant,
+            self.check,
+            self.checkmate,
             self.hash,
         );
 
@@ -527,6 +544,7 @@ impl Board {
 
         self.history.push(history_entry);
         self.check = [None, None];
+        self.checkmate = [None, None];
         self.attacks = [None, None];
         self.moves = [None, None];
         self.update_hash();
@@ -593,7 +611,8 @@ impl Board {
         if self.current_color == BLACK {
             self.full_moves_count -= 1;
         }
-        self.check = [None, None];
+        self.check = last_move.check;
+        self.checkmate = last_move.checkmate;
         self.attacks = last_move.attacks;
         self.moves = [None, None];
         self.hash = last_move.hash;
