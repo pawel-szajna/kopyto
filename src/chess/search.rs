@@ -137,6 +137,7 @@ mod pimpl {
     use rand::prelude::SliceRandom;
     use crate::chess::moves::Piece;
     use crate::chess::transpositions::Score::{Exact, LowerBound, UpperBound};
+    use crate::chess::transpositions::Transpositions;
     use crate::chess::util;
 
     const NULL_MOVE: Move = Move::new();
@@ -176,6 +177,19 @@ mod pimpl {
         fn qsearch(&mut self, context: &mut SearchContext, depth_in: usize, alpha: i64, beta: i64) -> i64;
     }
 
+    fn print_search_info(context: &SearchContext, current_depth: usize, score: i64, transpositions: &Transpositions) {
+        let time = context.start_time.elapsed().unwrap();
+        println!(
+            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {}",
+            current_depth,
+            context.seldepth,
+            util::eval_to_str(score),
+            context.nodes,
+            1000000000 * context.nodes as u128 / max(1, time.as_nanos()),
+            time.as_millis(),
+            transpositions.usage());
+    }
+
     impl SearchImpl for Board {
         fn search_impl(&mut self, options: Options) -> Move {
             let start = SystemTime::now();
@@ -197,6 +211,7 @@ mod pimpl {
             let depth = options.depth.unwrap_or(usize::MAX);
             let mut context = SearchContext::new(depth, start, max(target_time as u128, MIN_MOVE_TIME));
             let mut eval = self.last_eval;
+            let mut abs_eval = 0;
             let mut best_move = NULL_MOVE;
 
             for current_depth in 1..=depth {
@@ -220,20 +235,12 @@ mod pimpl {
 
                 best_move = context.best_move;
 
-                let abs_eval = if side == WHITE { eval } else { -eval };
+                abs_eval = if side == WHITE { eval } else { -eval };
 
                 let time_taken = context.start_time.elapsed().unwrap();
                 let iter_taken = iter_start.elapsed().unwrap();
 
-                println!(
-                    "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {}",
-                    current_depth,
-                    context.seldepth,
-                    util::eval_to_str(abs_eval),
-                    context.nodes,
-                    1000000000 * context.nodes as u128 / max(1, time_taken.as_nanos()),
-                    time_taken.as_millis(),
-                    self.transpositions.usage());
+                print_search_info(&context, context.depth, abs_eval, &self.transpositions);
 
                 if time_taken.as_millis() >= context.target_time || iter_taken.as_millis() > context.target_time / 8 {
                     break;
@@ -242,6 +249,10 @@ mod pimpl {
 
             if best_move == NULL_MOVE {
                 println!("info string null move selected as best, bug?");
+            }
+
+            if context.time_hit {
+                print_search_info(&context, context.depth - 1, abs_eval, &self.transpositions);
             }
 
             self.last_eval = -eval;
