@@ -504,10 +504,7 @@ mod pimpl {
 
             context.nodes += 1;
 
-            let score = match self.in_checkmate(side) {
-                true => -(10000 - (context.depth - depth)),
-                false => self.eval() * multiplier,
-            };
+            let score = self.eval() * multiplier;
 
             if score >= beta {
                 return beta;

@@ -387,6 +387,7 @@ impl Board {
         }
     }
 
+    #[allow(dead_code)]
     pub fn in_checkmate(&mut self, side: Side) -> bool {
         match self.checkmate[side] {
             Some(value) => value,
