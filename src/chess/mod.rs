@@ -6,3 +6,4 @@ pub mod search;
 pub mod util;
 mod transpositions;
 mod magics;
+mod book;

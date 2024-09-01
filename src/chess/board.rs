@@ -1,3 +1,4 @@
+use crate::chess::book::{Book, BookGenerator};
 use crate::chess::magics::{create_bishop_magics, create_rook_magics, Magics};
 use crate::chess::transpositions::{Transpositions, Zobrist};
 use super::masks;
@@ -91,6 +92,8 @@ pub struct Board {
 
     pub(super) bishop_magics: Magics,
     pub(super) rook_magics: Magics,
+
+    pub(super) book: Book,
 }
 
 impl Board {
@@ -129,6 +132,8 @@ impl Board {
 
             bishop_magics: create_bishop_magics(),
             rook_magics: create_rook_magics(),
+
+            book: Book::new(),
         }
     }
 
@@ -266,6 +271,8 @@ impl Board {
         }
 
         board.update_hash();
+        board.book = board.prepare_book();
+
         board
     }
 

@@ -136,7 +136,7 @@ mod pimpl {
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use crate::chess::moves::Piece;
-    use crate::chess::transpositions::{Score, Transpositions};
+    use crate::chess::transpositions::Score;
     use crate::chess::util;
 
     const NULL_MOVE: Move = Move::new();
@@ -187,13 +187,18 @@ mod pimpl {
         fn qsearch(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
     }
 
-    fn get_pv(board: &mut Board) -> String {
+    fn get_pv(board: &mut Board, limit: i64) -> String {
+        if limit <= 0 {
+            return String::new();
+        }
+
         let moves = board.generate_moves(false);
         let best = board.transpositions.get_move(board.key());
+
         match best {
             Some(m) if moves.contains(&m) => {
                 board.make_move(m);
-                let result = format!(" {:?}{}", m, get_pv(board));
+                let result = format!(" {:?}{}", m, get_pv(board, limit - 1));
                 board.unmake_move();
                 result
             },
@@ -203,7 +208,7 @@ mod pimpl {
 
     fn print_search_info(board: &mut Board, context: &SearchContext, current_depth: i64, score: i64) {
         let time = context.start_time.elapsed().unwrap();
-        let pv = get_pv(board);
+        let pv = get_pv(board, max(current_depth, context.seldepth));
         println!(
             "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} pv{}",
             current_depth,
@@ -242,6 +247,19 @@ mod pimpl {
             let start = SystemTime::now();
 
             let side = self.side_to_move();
+
+            if let Some(book_moves) = self.book.search(side, self.full_moves_count, self.key()) {
+                let mut legal_moves = self.generate_moves(false);
+                legal_moves.retain(|m| book_moves.contains(m));
+                if !legal_moves.is_empty() {
+                    let mut rng = rand::thread_rng();
+                    if let Some(m) = legal_moves.choose(&mut rng) {
+                        println!("info depth 1 score cp 0");
+                        return m.clone();
+                    }
+                }
+            }
+
             let our_time = if side == WHITE { options.white_time } else { options.black_time };
             let opponent_time = if side == WHITE { options.black_time } else { options.white_time };
             let time_advantage = our_time as i64 - opponent_time as i64;
