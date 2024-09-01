@@ -180,6 +180,7 @@ mod pimpl {
 
         fn draw_conditions(&mut self) -> bool;
         fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64>;
+        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &Vec<Move>) -> Option<i64>;
 
         fn negamax(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
         fn zero_window(&mut self, context: &mut SearchContext, depth: i64, beta: i64) -> i64;
@@ -418,6 +419,16 @@ mod pimpl {
             None
         }
 
+        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &Vec<Move>) -> Option<i64> {
+            match moves.is_empty() {
+                false => None,
+                true => Some(match self.in_check(self.side_to_move()) {
+                    false => 0, // stalemate
+                    true => -(10000 - (context.depth - depth)), // checkmate in N
+                })
+            }
+        }
+
         fn negamax(&mut self, context: &mut SearchContext, depth: i64, mut alpha: i64, beta: i64) -> i64 {
             if let Some(score) = self.break_conditions(context, depth, alpha, beta) {
                 return score;
@@ -429,12 +440,9 @@ mod pimpl {
 
             context.nodes += 1;
             let moves = self.get_moves(false);
-            if moves.is_empty() {
-                return if self.in_check(self.side_to_move()) {
-                    -(10000 - (context.depth as i64 - depth as i64)) // checkmate in N moves
-                } else {
-                    0 // stalemate
-                }
+
+            if let Some(score) = self.no_moves_conditions(context, depth, &moves) {
+                return score;
             }
 
             let mut best = NULL_MOVE;
@@ -443,17 +451,16 @@ mod pimpl {
             for m in moves {
                 self.make_move(m.clone());
                 let key = self.key();
-                // let score = match found_exact {
-                //     false => -self.negamax(context, depth - 1, -beta, -alpha),
-                //     true => {
-                //         let mut score = -self.zero_window(context, depth - 1, -alpha);
-                //         if score > alpha {
-                //             score = -self.negamax(context, depth - 1, -beta, -alpha);
-                //         }
-                //         score
-                //     }
-                // };
-                let score = -self.negamax(context, depth - 1, -beta, -alpha);
+                let score = match found_exact {
+                    false => -self.negamax(context, depth - 1, -beta, -alpha),
+                    true => {
+                        let mut score = -self.zero_window(context, depth - 1, -alpha);
+                        if score > alpha {
+                            score = -self.negamax(context, depth - 1, -beta, -alpha);
+                        }
+                        score
+                    }
+                };
                 self.unmake_move();
 
                 if context.time_hit {
@@ -491,7 +498,24 @@ mod pimpl {
                 return self.qsearch(context, 0, beta - 1, beta);
             }
 
-            0
+            context.nodes += 1;
+            let moves = self.get_moves(false);
+
+            if let Some(score) = self.no_moves_conditions(context, depth, &moves) {
+                return score;
+            }
+
+            for m in moves {
+                self.make_move(m);
+                let eval = -self.zero_window(context, depth - 1, 1 - beta);
+                self.unmake_move();
+
+                if eval >= beta {
+                    return beta;
+                }
+            }
+
+            beta - 1
         }
 
         fn qsearch(&mut self, context: &mut SearchContext, depth: i64, mut alpha: i64, beta: i64) -> i64 {
@@ -528,6 +552,7 @@ mod pimpl {
                 }
 
                 if score >= beta {
+                    self.transpositions.set(self.key(), depth, Score::LowerBound(beta), capture);
                     return beta;
                 }
 
