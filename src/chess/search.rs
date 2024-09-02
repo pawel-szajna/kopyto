@@ -133,7 +133,7 @@ mod pimpl {
     use std::thread;
     use std::time::{Duration, SystemTime};
     use super::*;
-    use crate::chess::board::{BLACK, WHITE};
+    use crate::chess::board::{Side, BLACK, WHITE};
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use rand::Rng;
@@ -180,7 +180,9 @@ mod pimpl {
         fn eval(&self) -> i64;
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
 
-        fn draw_conditions(&mut self) -> bool;
+        fn bishop_pair(&self, side: Side) -> bool;
+        fn insufficient_material(&self) -> bool;
+        fn draw_conditions(&self) -> bool;
         fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64>;
         fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &Vec<Move>) -> Option<i64>;
 
@@ -419,8 +421,41 @@ mod pimpl {
             score
         }
 
-        fn draw_conditions(&mut self) -> bool {
-            self.triple_repetition() || self.half_moves_clock >= 100
+        fn bishop_pair(&self, side: Side) -> bool {
+            let mut bishops = self.bishops[side];
+            let mut lsb = 0;
+            let mut dsb = 0;
+            while bishops != 0 {
+                let bishop = bishops.trailing_zeros();
+                if (bishop % 2) != ((bishop / 8) % 2) {
+                    lsb += 1;
+                } else {
+                    dsb += 1;
+                }
+                bishops &= bishops - 1;
+            }
+            lsb > 0 && dsb > 0
+        }
+
+        fn insufficient_material(&self) -> bool {
+            !(
+                self.queens[WHITE] != 0 ||
+                self.queens[BLACK] != 0 ||
+                self.rooks[WHITE] != 0 ||
+                self.rooks[BLACK] != 0 ||
+                self.pawns[WHITE] != 0 ||
+                self.pawns[BLACK] != 0 ||
+                self.knights[WHITE].count_ones() > 3 ||
+                self.knights[BLACK].count_ones() > 3 ||
+                (self.bishops[WHITE] != 0 && self.knights[WHITE] != 0) ||
+                (self.bishops[BLACK] != 0 && self.bishops[BLACK] != 0) ||
+                self.bishop_pair(WHITE) ||
+                self.bishop_pair(BLACK)
+            )
+        }
+
+        fn draw_conditions(&self) -> bool {
+            self.triple_repetition() || self.half_moves_clock >= 100 || self.insufficient_material()
         }
 
         fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64> {
