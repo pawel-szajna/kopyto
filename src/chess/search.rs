@@ -120,6 +120,49 @@ impl Options {
     }
 }
 
+pub struct MoveList {
+    moves: Vec<Move>,
+    weights: Vec<i64>,
+    used: usize,
+}
+
+impl MoveList {
+    fn new(moves: Vec<Move>, weights: Vec<i64>) -> Self {
+        assert_eq!(moves.len(), weights.len());
+        Self {
+            moves,
+            weights,
+            used: 0,
+        }
+    }
+}
+
+impl Iterator for MoveList {
+    type Item = Move;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.used >= self.moves.len() {
+            return None;
+        }
+
+        let mut max_value = i64::MIN;
+        let mut max_idx = 0;
+        for i in self.used..self.moves.len() {
+            let weight = self.weights[i];
+            if weight > max_value {
+                max_idx = i;
+                max_value = weight;
+            }
+        }
+
+        let best_move = self.moves[max_idx];
+        self.weights.swap(self.used, max_idx);
+        self.used += 1;
+
+        Some(best_move)
+    }
+}
+
 pub trait Search: pimpl::SearchImpl {
     fn search(&mut self, options: Options) -> Move {
         self.search_impl(options)
@@ -174,8 +217,8 @@ mod pimpl {
     pub trait SearchImpl {
         fn search_impl(&mut self, options: Options) -> Move;
 
-        fn get_moves(&mut self, captures_only: bool) -> Vec<Move>;
-        fn order_moves(&mut self, moves: &mut Vec<Move>);
+        fn get_moves(&mut self, captures_only: bool) -> MoveList;
+        fn order_moves(&self, moves: &Vec<Move>) -> Vec<i64>;
 
         fn eval(&self) -> i64;
         fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
@@ -184,7 +227,7 @@ mod pimpl {
         fn insufficient_material(&self) -> bool;
         fn draw_conditions(&self) -> bool;
         fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64>;
-        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &Vec<Move>) -> Option<i64>;
+        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &MoveList) -> Option<i64>;
 
         fn negamax(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
         fn zero_window(&mut self, context: &mut SearchContext, depth: i64, beta: i64) -> i64;
@@ -336,16 +379,13 @@ mod pimpl {
             best_move
         }
 
-        fn get_moves(&mut self, captures_only: bool) -> Vec<Move> {
-            let mut moves = self.generate_moves(captures_only);
-            self.order_moves(&mut moves);
-            moves
+        fn get_moves(&mut self, captures_only: bool) -> MoveList {
+            let moves = self.generate_moves(captures_only);
+            let weights = self.order_moves(&moves);
+            MoveList::new(moves, weights)
         }
 
-        fn order_moves(&mut self, moves: &mut Vec<Move>) {
-            let mut rng = rand::thread_rng();
-            moves.shuffle(&mut rng);
-
+        fn order_moves(&self, moves: &Vec<Move>) -> Vec<i64> {
             let side = self.side_to_move();
             let opponent = if side == WHITE { BLACK } else { WHITE };
             let attacks = self.occupied[opponent];
@@ -378,8 +418,8 @@ mod pimpl {
                 }
             }
 
-            moves.sort_by_cached_key(|m| {
-                -match hash_move {
+            moves.iter().map(|m| {
+                match hash_move {
                     Some(hashed) if &hashed == m => 10000,
                     _ => {
                         let target_mask = 1u64 << m.get_to();
@@ -393,7 +433,7 @@ mod pimpl {
                         }
                     },
                 }
-            });
+            }).collect()
         }
 
         fn eval(&self) -> i64 {
@@ -479,8 +519,8 @@ mod pimpl {
             None
         }
 
-        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &Vec<Move>) -> Option<i64> {
-            match moves.is_empty() {
+        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &MoveList) -> Option<i64> {
+            match moves.moves.is_empty() {
                 false => None,
                 true => Some(match self.in_check(self.side_to_move()) {
                     false => 0, // stalemate
