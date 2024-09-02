@@ -28,6 +28,7 @@ impl UCI {
                 "uci" => self.uci(),
                 "isready" => self.isready(),
                 "ucinewgame" => self.ucinewgame(),
+                "currentfen" => println!("{}", self.board.export_fen()),
                 cmd if cmd.starts_with("position") => self.position(cmd.strip_prefix("position ")),
                 cmd if cmd.starts_with("go") => self.go(cmd.strip_prefix("go").unwrap_or("").trim()),
                 _ => println!("info string unknown command"),

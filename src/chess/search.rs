@@ -368,7 +368,14 @@ mod pimpl {
             }
 
             if best_move == NULL_MOVE {
-                println!("info string null move selected as best, bug?");
+                println!("info string null move selected as best, bug? overriding with a semi-random legal move");
+                let legal_moves = self.generate_moves(false);
+                if !legal_moves.is_empty() {
+                    best_move = legal_moves[0];
+                } else {
+                    println!("info string no legal moves?!");
+                }
+                println!("info string current position is {}", self.export_fen());
             }
 
             if context.time_hit {
@@ -495,10 +502,14 @@ mod pimpl {
         }
 
         fn draw_conditions(&self) -> bool {
-            self.triple_repetition() || self.half_moves_clock >= 100 || self.insufficient_material()
+            self.repeated_position() || self.half_moves_clock >= 100 || self.insufficient_material()
         }
 
         fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64> {
+            if depth == context.depth {
+                return None; // do not exit early from search root
+            }
+
             if out_of_time(context) {
                 return Some(0);
             }
@@ -507,12 +518,7 @@ mod pimpl {
                 return Some(0);
             }
 
-            let transposition = self.transpositions.get(self.key(), depth, alpha, beta);
-            if transposition.is_some() {
-                let (score, m) = transposition.unwrap();
-                if depth == context.depth {
-                    context.best_move = m;
-                }
+            if let Some((score, _)) = self.transpositions.get(self.key(), depth, alpha, beta) {
                 return Some(score);
             }
 
