@@ -130,11 +130,13 @@ impl Search for Board {}
 
 mod pimpl {
     use std::cmp::{min, max};
-    use std::time::SystemTime;
+    use std::thread;
+    use std::time::{Duration, SystemTime};
     use super::*;
     use crate::chess::board::{BLACK, WHITE};
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
+    use rand::Rng;
     use crate::chess::moves::Piece;
     use crate::chess::transpositions::Score;
     use crate::chess::util;
@@ -254,6 +256,7 @@ mod pimpl {
                 if !legal_moves.is_empty() {
                     let mut rng = rand::thread_rng();
                     if let Some(m) = legal_moves.choose(&mut rng) {
+                        thread::sleep(Duration::from_millis(rng.gen_range(50..100)));
                         println!("info depth 1 score cp 0");
                         return m.clone();
                     }
