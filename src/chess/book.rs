@@ -214,6 +214,16 @@ const OPENINGS_WHITE: &[&[&str]] = &[
     &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "g1f3" ],
     &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5" ],
 
+    // Responses to 1. ...Nc6
+    &[ "d2d4", "b8c6", "g1f3", "d7d5", "c1f4", "g8f6", "e2e3" ],
+    &[ "d2d4", "b8c6", "g1f3", "d7d5", "c1f4", "c8f5", "e2e3" ],
+    &[ "d2d4", "b8c6", "g1f3", "d7d5", "c1f4", "e7e6", "e2e3" ],
+    &[ "d2d4", "b8c6", "g1f3", "d7d5", "c2c4", "d5c4", "e2e3" ],
+    &[ "d2d4", "b8c6", "g1f3", "d7d5", "c2c4", "d5c4", "b1c3" ],
+    &[ "d2d4", "b8c6", "g1f3", "d7d5", "c2c4", "e7e6", "b1c3" ],
+    &[ "d2d4", "b8c6", "g1f3", "g8f6", "c2c4" ],
+    &[ "d2d4", "b8c6", "g1f3", "g8f6", "d4d5", "c6b4", "c2c4" ],
+
 ];
 
 const OPENINGS_BLACK: &[&[&str]] = &[
