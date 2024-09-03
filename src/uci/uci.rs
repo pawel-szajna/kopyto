@@ -1,9 +1,9 @@
 use scanner_rust::ScannerAscii;
-use crate::chess::board::Board;
-use crate::chess::moves::Move;
-use crate::chess::moves_generation::perft;
-use crate::chess::search;
-use crate::chess::search::Search;
+use crate::board::Board;
+use crate::moves::Move;
+use crate::moves_generation::perft;
+use crate::search;
+use crate::search::Search;
 
 pub struct UCI {
     board: Board,

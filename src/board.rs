@@ -1,11 +1,11 @@
-use crate::chess::book::{Book, BookGenerator};
-use crate::chess::magics::{create_bishop_magics, create_rook_magics, Magics};
-use crate::chess::transpositions::{Transpositions, Zobrist};
-use super::masks;
-use super::moves::*;
-use super::moves_generation::MoveGenerator;
-use super::util::*;
-use super::types::Side;
+use crate::book::{Book, BookGenerator};
+use crate::magics::{create_bishop_magics, create_rook_magics, Magics};
+use crate::transpositions::{Transpositions, Zobrist};
+use crate::masks;
+use crate::moves::*;
+use crate::moves_generation::MoveGenerator;
+use crate::util::*;
+use crate::types::Side;
 
 pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];

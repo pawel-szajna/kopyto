@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use crate::chess::board::Board;
-use crate::chess::types::Side;
-use crate::chess::moves::Move;
-use crate::chess::moves_generation::MoveGenerator;
+use crate::board::Board;
+use crate::types::Side;
+use crate::moves::Move;
+use crate::moves_generation::MoveGenerator;
 
 type PositionMap = HashMap<u64, Vec<Move>>;
 type SideMap = HashMap<u32, PositionMap>;

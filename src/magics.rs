@@ -1,6 +1,6 @@
 // use std::time::SystemTime;
 // use rand::RngCore;
-use crate::chess::masks;
+use crate::masks;
 
 // There is some magics search code commented out
 // The best programming practices out there

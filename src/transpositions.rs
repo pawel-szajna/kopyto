@@ -1,7 +1,7 @@
 use rand::RngCore;
-use crate::chess::board::Board;
-use crate::chess::moves::Move;
-use crate::chess::types::Side;
+use crate::board::Board;
+use crate::moves::Move;
+use crate::types::Side;
 
 type SideKeys = [u64; 64];
 type PieceKeys = [SideKeys; 2];

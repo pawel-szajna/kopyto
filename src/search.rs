@@ -1,5 +1,5 @@
-use crate::chess::board::Board;
-use crate::chess::moves::Move;
+use crate::board::Board;
+use crate::moves::Move;
 
 mod weights {
     type Weights = [i64; 64];
@@ -177,13 +177,13 @@ mod pimpl {
     use std::thread;
     use std::time::{Duration, SystemTime};
     use super::*;
-    use crate::chess::types::Side;
-    use crate::chess::moves_generation::MoveGenerator;
+    use crate::types::Side;
+    use crate::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use rand::Rng;
-    use crate::chess::moves::Piece;
-    use crate::chess::transpositions::Score;
-    use crate::chess::util;
+    use crate::moves::Piece;
+    use crate::transpositions::Score;
+    use crate::util;
 
     const NULL_MOVE: Move = Move::new();
     const MIN_MOVE_TIME: u128 = 200;

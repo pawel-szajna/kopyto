@@ -80,7 +80,7 @@ fn perft_impl(board: &mut Board, depth: usize, init: bool) -> u64 {
 }
 
 mod attacks {
-    use crate::chess::magics::Magics;
+    use crate::magics::Magics;
     use super::*;
 
     pub fn pawn(side: Side, idx: usize) -> u64 {
@@ -106,7 +106,7 @@ mod attacks {
 
 mod pimpl {
     use super::*;
-    use crate::chess::moves::Piece;
+    use crate::moves::Piece;
 
     fn generate_piece<F>(moves: &mut Vec<Move>, mut mask: u64, generator: F)
     where
