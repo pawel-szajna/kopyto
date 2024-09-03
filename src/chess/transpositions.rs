@@ -1,6 +1,7 @@
 use rand::RngCore;
-use crate::chess::board::{BLACK, Board, WHITE};
+use crate::chess::board::Board;
 use crate::chess::moves::Move;
+use crate::chess::types::Side;
 
 type SideKeys = [u64; 64];
 type PieceKeys = [SideKeys; 2];
@@ -69,36 +70,36 @@ impl Zobrist {
     pub fn key(&self, board: &Board, castle_kingside: [bool; 2], castle_queenside: [bool; 2]) -> u64 {
         let mut key = 0u64;
 
-        key ^= self.key_piece(board.pawns[WHITE], &self.keys_pawns[WHITE]);
-        key ^= self.key_piece(board.pawns[BLACK], &self.keys_pawns[BLACK]);
-        key ^= self.key_piece(board.knights[WHITE], &self.keys_knights[WHITE]);
-        key ^= self.key_piece(board.knights[BLACK], &self.keys_knights[BLACK]);
-        key ^= self.key_piece(board.bishops[WHITE], &self.keys_bishops[WHITE]);
-        key ^= self.key_piece(board.bishops[BLACK], &self.keys_bishops[BLACK]);
-        key ^= self.key_piece(board.rooks[WHITE], &self.keys_rooks[WHITE]);
-        key ^= self.key_piece(board.rooks[BLACK], &self.keys_rooks[BLACK]);
-        key ^= self.key_piece(board.queens[WHITE], &self.keys_queens[WHITE]);
-        key ^= self.key_piece(board.queens[BLACK], &self.keys_queens[BLACK]);
-        key ^= self.key_piece(board.kings[WHITE], &self.keys_kings[WHITE]);
-        key ^= self.key_piece(board.kings[BLACK], &self.keys_kings[BLACK]);
+        key ^= self.key_piece(board.pawns[Side::White], &self.keys_pawns[Side::White]);
+        key ^= self.key_piece(board.pawns[Side::Black], &self.keys_pawns[Side::Black]);
+        key ^= self.key_piece(board.knights[Side::White], &self.keys_knights[Side::White]);
+        key ^= self.key_piece(board.knights[Side::Black], &self.keys_knights[Side::Black]);
+        key ^= self.key_piece(board.bishops[Side::White], &self.keys_bishops[Side::White]);
+        key ^= self.key_piece(board.bishops[Side::Black], &self.keys_bishops[Side::Black]);
+        key ^= self.key_piece(board.rooks[Side::White], &self.keys_rooks[Side::White]);
+        key ^= self.key_piece(board.rooks[Side::Black], &self.keys_rooks[Side::Black]);
+        key ^= self.key_piece(board.queens[Side::White], &self.keys_queens[Side::White]);
+        key ^= self.key_piece(board.queens[Side::Black], &self.keys_queens[Side::Black]);
+        key ^= self.key_piece(board.kings[Side::White], &self.keys_kings[Side::White]);
+        key ^= self.key_piece(board.kings[Side::Black], &self.keys_kings[Side::Black]);
 
-        if castle_kingside[WHITE] {
-            key ^= self.key_castle_kingside[WHITE];
+        if castle_kingside[Side::White] {
+            key ^= self.key_castle_kingside[Side::White];
         }
 
-        if castle_kingside[BLACK] {
-            key ^= self.key_castle_kingside[BLACK];
+        if castle_kingside[Side::Black] {
+            key ^= self.key_castle_kingside[Side::Black];
         }
 
-        if castle_queenside[WHITE] {
-            key ^= self.key_castle_queenside[WHITE];
+        if castle_queenside[Side::White] {
+            key ^= self.key_castle_queenside[Side::White];
         }
 
-        if castle_queenside[BLACK] {
-            key ^= self.key_castle_queenside[BLACK];
+        if castle_queenside[Side::Black] {
+            key ^= self.key_castle_queenside[Side::Black];
         }
 
-        if board.side_to_move() == BLACK {
+        if board.side_to_move().is_black() {
             key ^= self.key_black_to_move;
         }
 

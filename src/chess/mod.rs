@@ -7,3 +7,4 @@ pub mod util;
 mod transpositions;
 mod magics;
 mod book;
+mod types;

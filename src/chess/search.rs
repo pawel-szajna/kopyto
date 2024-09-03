@@ -177,7 +177,7 @@ mod pimpl {
     use std::thread;
     use std::time::{Duration, SystemTime};
     use super::*;
-    use crate::chess::board::{Side, BLACK, WHITE};
+    use crate::chess::types::Side;
     use crate::chess::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use rand::Rng;
@@ -309,8 +309,8 @@ mod pimpl {
                 }
             }
 
-            let our_time = if side == WHITE { options.white_time } else { options.black_time };
-            let opponent_time = if side == WHITE { options.black_time } else { options.white_time };
+            let our_time = side.choose(options.white_time, options.black_time);
+            let opponent_time = !side.choose(options.white_time, options.black_time);
             let time_advantage = our_time as i64 - opponent_time as i64;
             let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
 
@@ -356,7 +356,7 @@ mod pimpl {
 
                 best_move = context.best_move;
 
-                abs_eval = if side == WHITE { eval } else { -eval };
+                abs_eval = side.choose(eval, -eval);
 
                 let time_taken = context.start_time.elapsed().unwrap();
                 let iter_taken = iter_start.elapsed().unwrap();
@@ -395,7 +395,7 @@ mod pimpl {
 
         fn order_moves(&self, moves: &Vec<Move>) -> Vec<i64> {
             let side = self.side_to_move();
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
             let attacks = self.occupied[opponent];
 
             let piece_value = |p: Option<Piece>| match p {
@@ -447,7 +447,7 @@ mod pimpl {
         fn eval(&self) -> i64 {
             let mut score = 0i64;
 
-            for (side, modifier) in [(WHITE, 1i64), (BLACK, -1i64)] {
+            for (side, modifier) in [(Side::White, 1i64), (Side::Black, -1i64)] {
                 score += modifier * self.eval_piece(self.kings[side], 0, &weights::KING[side]);
                 score += modifier * self.eval_piece(self.pawns[side], 100, &weights::PAWN[side]);
                 score += modifier * self.eval_piece(self.knights[side], 300, &weights::KNIGHT[side]);
@@ -487,18 +487,18 @@ mod pimpl {
 
         fn insufficient_material(&self) -> bool {
             !(
-                self.queens[WHITE] != 0 ||
-                self.queens[BLACK] != 0 ||
-                self.rooks[WHITE] != 0 ||
-                self.rooks[BLACK] != 0 ||
-                self.pawns[WHITE] != 0 ||
-                self.pawns[BLACK] != 0 ||
-                self.knights[WHITE].count_ones() > 3 ||
-                self.knights[BLACK].count_ones() > 3 ||
-                (self.bishops[WHITE] != 0 && self.knights[WHITE] != 0) ||
-                (self.bishops[BLACK] != 0 && self.bishops[BLACK] != 0) ||
-                self.bishop_pair(WHITE) ||
-                self.bishop_pair(BLACK)
+                self.queens[Side::White] != 0 ||
+                self.queens[Side::Black] != 0 ||
+                self.rooks[Side::White] != 0 ||
+                self.rooks[Side::Black] != 0 ||
+                self.pawns[Side::White] != 0 ||
+                self.pawns[Side::Black] != 0 ||
+                self.knights[Side::White].count_ones() > 3 ||
+                self.knights[Side::Black].count_ones() > 3 ||
+                (self.bishops[Side::White] != 0 && self.knights[Side::White] != 0) ||
+                (self.bishops[Side::Black] != 0 && self.bishops[Side::Black] != 0) ||
+                self.bishop_pair(Side::White) ||
+                self.bishop_pair(Side::Black)
             )
         }
 
@@ -631,7 +631,7 @@ mod pimpl {
             }
 
             let side = self.side_to_move();
-            let multiplier = if side == WHITE { 1 } else { -1 };
+            let multiplier = side.choose(1, -1);
 
             context.nodes += 1;
 

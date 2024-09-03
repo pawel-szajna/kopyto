@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::chess::board;
-use crate::chess::board::{Board, Side};
+use crate::chess::board::Board;
+use crate::chess::types::Side;
 use crate::chess::moves::Move;
 use crate::chess::moves_generation::MoveGenerator;
 
@@ -21,11 +21,7 @@ impl Book {
     }
 
     pub fn search(&self, side: Side, turn: u32, position: u64) -> Option<Vec<Move>> {
-        match side {
-            board::WHITE => Self::search_side(&self.white, turn, position),
-            board::BLACK => Self::search_side(&self.black, turn, position),
-            _ => panic!("wrong side: {}", side),
-        }
+        Self::search_side(side.choose(&self.white, &self.black), turn, position)
     }
 
     fn search_side(map: &SideMap, turn: u32, position: u64) -> Option<Vec<Move>> {

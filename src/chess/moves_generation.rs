@@ -1,4 +1,5 @@
-use super::board::{Board, Side, BLACK, WHITE};
+use super::board::Board;
+use super::types::Side;
 use super::masks;
 use super::moves::{Move, Promotion};
 #[cfg(any(test, feature = "ui"))]
@@ -123,6 +124,13 @@ mod pimpl {
         }
     }
 
+    fn push_pawns(side: Side, pawns: u64) -> u64 {
+        match side {
+            Side::White => pawns << 8,
+            Side::Black => pawns >> 8,
+        }
+    }
+
     pub trait MoveGenerator {
         fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move>;
 
@@ -153,7 +161,7 @@ mod pimpl {
 
     impl MoveGenerator for Board {
         fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move> {
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
 
             let mut moves = Vec::with_capacity(64);
 
@@ -201,7 +209,7 @@ mod pimpl {
         }
 
         fn check_mask(&self, side: Side, king: u64) -> (u64, u64) {
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
             assert_ne!(king, 0, "no king on board");
             let king_idx = king.trailing_zeros() as usize;
 
@@ -242,7 +250,7 @@ mod pimpl {
         }
 
         fn attack_mask(&self, side: Side) -> u64 {
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
 
             let king_idx = self.kings[opponent].trailing_zeros() as usize;
             let king_attacks = attacks::king(king_idx);
@@ -306,7 +314,7 @@ mod pimpl {
 
         fn parallel_pin_mask(&self, side: Side, king: u64) -> u64 {
             let king_idx = king.trailing_zeros() as usize;
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
             self.pin_mask(
                 side,
                 king_idx,
@@ -316,7 +324,7 @@ mod pimpl {
 
         fn diagonal_pin_mask(&self, side: Side, king: u64) -> u64 {
             let king_idx = king.trailing_zeros() as usize;
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
             self.pin_mask(
                 side,
                 king_idx,
@@ -333,7 +341,7 @@ mod pimpl {
             check_mask: u64,
             captures_only: bool,
         ) {
-            let opponent = if side == WHITE { BLACK } else { WHITE };
+            let opponent = !side;
 
             let pawns = self.pawns[side];
 
@@ -342,26 +350,26 @@ mod pimpl {
             let pawns_may_take_pinned = pawns_may_take & diagonal_pin_mask;
 
             let mut attacks_left = match side {
-                WHITE => {
+                Side::White => {
                     ((pawns_may_take_unpinned << 7) & !masks::FILES[7])
                         | ((pawns_may_take_pinned << 7) & !masks::FILES[7] & diagonal_pin_mask)
-                }
-                _ => {
+                },
+                Side::Black => {
                     ((pawns_may_take_unpinned >> 7) & !masks::FILES[0])
                         | ((pawns_may_take_pinned >> 7) & !masks::FILES[0] & diagonal_pin_mask)
-                }
+                },
             } & check_mask
                 & self.occupied[opponent];
 
             let mut attacks_right = match side {
-                WHITE => {
+                Side::White => {
                     ((pawns_may_take_unpinned << 9) & !masks::FILES[0])
                         | ((pawns_may_take_pinned << 9) & !masks::FILES[0] & diagonal_pin_mask)
-                }
-                _ => {
+                },
+                Side::Black => {
                     ((pawns_may_take_unpinned >> 9) & !masks::FILES[7])
                         | ((pawns_may_take_pinned >> 9) & !masks::FILES[7] & diagonal_pin_mask)
-                }
+                },
             } & check_mask
                 & self.occupied[opponent];
 
@@ -369,28 +377,14 @@ mod pimpl {
             let pawns_may_walk_pinned = pawns_may_walk & parallel_pin_mask;
             let pawns_may_walk_unpinned = pawns_may_walk & !parallel_pin_mask;
 
-            let pawns_walk_unpinned = if side == WHITE {
-                pawns_may_walk_unpinned << 8
-            } else {
-                pawns_may_walk_unpinned >> 8
-            } & !self.any_piece;
-            let pawns_walk_pinned = if side == WHITE {
-                pawns_may_walk_pinned << 8
-            } else {
-                pawns_may_walk_pinned >> 8
-            } & !self.any_piece
-                & parallel_pin_mask;
+            let pawns_walk_unpinned = !self.any_piece & push_pawns(side, pawns_may_walk_unpinned);
+            let pawns_walk_pinned = !self.any_piece & parallel_pin_mask & push_pawns(side, pawns_may_walk_pinned);
 
             let mut pawns_walk = (pawns_walk_unpinned | pawns_walk_pinned) & check_mask;
 
             let pawns_double = (pawns_walk_unpinned | pawns_walk_pinned) & masks::RANKS_RELATIVE[2][side];
 
-            let mut pawns_double_walk = if side == WHITE {
-                pawns_double << 8
-            } else {
-                pawns_double >> 8
-            } & !self.any_piece
-                & check_mask;
+            let mut pawns_double_walk = !self.any_piece & check_mask & push_pawns(side, pawns_double);
 
             if pawns & masks::NEXT_TO_SECOND_RANK[side] != 0 {
                 let mut promotion_attacks_left = attacks_left & masks::LAST_RANK[side];
@@ -399,7 +393,7 @@ mod pimpl {
 
                 while promotion_attacks_left != 0 {
                     let tgt_idx = promotion_attacks_left.trailing_zeros() as usize;
-                    let src_idx = if side == WHITE { tgt_idx - 7 } else { tgt_idx + 7 };
+                    let src_idx = side.choose(tgt_idx - 7, tgt_idx + 7);
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
@@ -409,7 +403,7 @@ mod pimpl {
 
                 while promotion_attacks_right != 0 {
                     let tgt_idx = promotion_attacks_right.trailing_zeros() as usize;
-                    let src_idx = if side == WHITE { tgt_idx - 9 } else { tgt_idx + 9 };
+                    let src_idx = side.choose(tgt_idx - 9, tgt_idx + 9);
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
@@ -420,7 +414,7 @@ mod pimpl {
                 if !captures_only {
                     while promotion_walk != 0 {
                         let tgt_idx = promotion_walk.trailing_zeros() as usize;
-                        let src_idx = if side == WHITE { tgt_idx - 8 } else { tgt_idx + 8 };
+                        let src_idx = side.choose(tgt_idx - 8, tgt_idx + 8);
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
@@ -436,26 +430,26 @@ mod pimpl {
 
             while attacks_left != 0 {
                 let idx = attacks_left.trailing_zeros() as usize;
-                moves.push(Move::from_idx(if side == WHITE { idx - 7 } else { idx + 7 }, idx));
+                moves.push(Move::from_idx(side.choose(idx - 7, idx + 7), idx));
                 attacks_left &= attacks_left - 1;
             }
 
             while attacks_right != 0 {
                 let idx = attacks_right.trailing_zeros() as usize;
-                moves.push(Move::from_idx(if side == WHITE { idx - 9 } else { idx + 9 }, idx));
+                moves.push(Move::from_idx(side.choose(idx - 9, idx + 9), idx));
                 attacks_right &= attacks_right - 1;
             }
 
             if !captures_only {
                 while pawns_walk != 0 {
                     let idx = pawns_walk.trailing_zeros() as usize;
-                    moves.push(Move::from_idx(if side == WHITE { idx - 8 } else { idx + 8 }, idx));
+                    moves.push(Move::from_idx(side.choose(idx - 8, idx + 8), idx));
                     pawns_walk &= pawns_walk - 1;
                 }
 
                 while pawns_double_walk != 0 {
                     let idx = pawns_double_walk.trailing_zeros() as usize;
-                    moves.push(Move::from_idx(if side == WHITE { idx - 16 } else { idx + 16 }, idx));
+                    moves.push(Move::from_idx(side.choose(idx - 16, idx + 16), idx));
                     pawns_double_walk &= pawns_double_walk - 1;
                 }
             }
@@ -466,11 +460,7 @@ mod pimpl {
 
             let target = self.en_passant;
             let target_idx = target.trailing_zeros() as usize;
-            let enemy_pawn = if side == WHITE {
-                self.en_passant >> 8
-            } else {
-                self.en_passant << 8
-            };
+            let enemy_pawn = side.choose(self.en_passant >> 8, self.en_passant << 8);
             let enemy_pawn_idx = enemy_pawn.trailing_zeros() as usize;
 
             if (enemy_pawn | target) & check_mask == 0 {
@@ -506,7 +496,7 @@ mod pimpl {
         }
 
         fn generate_king(&self, king_idx: usize, side: Side, legal_mask: u64) -> u64 {
-            let enemy_attacks = self.attack_mask(if side == WHITE { BLACK } else { WHITE });
+            let enemy_attacks = self.attack_mask(!side);
             let mut targets = attacks::king(king_idx) & legal_mask & !enemy_attacks;
 
             if self.castle_kingside[side]
