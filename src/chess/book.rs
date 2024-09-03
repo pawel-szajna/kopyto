@@ -120,27 +120,165 @@ pub trait BookGenerator {
 }
 
 const OPENINGS_WHITE: &[&[&str]] = &[
-    // Evans Gambit
-    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4" ],
+
+    // -- e4 -- //
+
+    // Russian
+    &[ "e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "f6e4", "d1e2" ], // Damiano variation
+    &[ "e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3" ],
+    &[ "e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "b8c6", "e5c6" ], // Stafford gambit
+
+    // Phildor
+    &[ "e2e4", "e7e5", "g1f3", "d7d6", "d2d4", "e5d4", "f3d4" ], // Exchange
+    &[ "e2e4", "e7e5", "g1f3", "d7d6", "d2d4", "c8g4", "d4e5" ],
+
+    // Two knights defense
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d3" ], // Modern bishop opening
+
+    // Giuoco Piano
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4" ], // Evans Gambit
 
     // Ruy Lopez
-    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4" ], // Morphy defense
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1g1" ], // Berlin defense
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "d7d6", "d2d4" ], // Steinitz defense
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "d7d6", "e1g1" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f8c5", "e1g1" ], // Classical
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f8c5", "c2c3" ],
+
+    // Scotch
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4" ], // Exchange
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "d7d6", "d4e5" ], // Black d6
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "d7d6", "f1b5" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "d7d6", "d4d5" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "g8f6", "d4d5" ], // Black Nf6
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "g8f6", "d4e5" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "g8f6", "b1c3" ],
+
+    // Scandinavian
+    &[ "e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5d6", "f1e2" ],
+    &[ "e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5d8", "d2d4" ],
+    &[ "e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "d2d4" ],
+
+    // Sicilian
+    &[ "e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4" ],
+    &[ "e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4" ],
+    &[ "e2e4", "c7c5", "g1f3", "e7e6", "d2d4", "c5d4", "f3d4" ],
+
+    // French
+    &[ "e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "c7c5", "e4d5" ],
+    &[ "e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4" ],
+    &[ "e2e4", "e7e6", "d2d4", "d7d5", "b1d2", "c7c5", "e4d5" ],
+    &[ "e2e4", "e7e6", "d2d4", "d7d5", "b1d2", "c7c5", "g1f3" ],
+    &[ "e2e4", "e7e6", "d2d4", "d7d5", "b1d2", "d5e4", "d2e4" ],
+    &[ "e2e4", "e7e6", "d2d4", "d7d5", "e4e5", "b8c6", "g1f3" ],
+
+    // Caro-Kann
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "g1f3" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "h2h4" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "g8f6", "e4e5" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4" ], // Main line
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "c2c4" ], // Panov attack
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "f1d3" ],
+
+    // Pirc
+    &[ "e2e4", "d7d6", "d2d4", "g8f6", "b1c3" ],
+
+    // -- d4 -- //
 
     // London
     &[ "d2d4", "g8f6", "c1f4" ], // Transposes to the main line below, order does not matter
-    &[ "d2d4", "d7d5", "c1f4", "g8f6", "e2e3" ],
+    &[ "d2d4", "d7d5", "c1f4", "b8c6", "e2e3" ],
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "e2e3", "b8c6", "g1f3" ],
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "e2e3", "e7e6", "g1f3" ],
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "e2e3", "c7c5", "c2c3" ],
+
+
+    // Zukertort
+    &[ "d2d4", "d7d5", "g1f3", "b8c6", "c1f4", "g8f6", "e2e3" ],
+    &[ "d2d4", "d7d5", "g1f3", "b8c6", "c1f4", "c8f5", "e2e3" ],
+    &[ "d2d4", "d7d5", "g1f3", "b8c6", "c2c4", "e7e6", "b1c3" ],
+    &[ "d2d4", "d7d5", "g1f3", "b8c6", "c2c4", "d5c4", "e2e3" ],
+    &[ "d2d4", "d7d5", "g1f3", "b8c6", "c2c4", "d5c4", "b1c3" ],
+    &[ "d2d4", "d7d5", "g1f3", "b8c6", "c2c4", "d5c4", "d4d5" ],
+
+    // Queen's gambit
+    &[ "d2d4", "d7d5", "c2c4" ],
+    &[ "d2d4", "d7d5", "c2c4", "d5c4", "g1f3" ], // Accepted, normal
+    &[ "d2d4", "d7d5", "c2c4", "d5c4", "e2e3" ], // Accepted, old
+    &[ "d2d4", "d7d5", "c2c4", "d5c4", "e2e4" ], // Accepted, Saduleto
+    &[ "d2d4", "d7d5", "c2c4", "c7c6", "g1f3" ], // Slav Defense
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "d5c4", "e2e4" ], // Declined, dxc4 capture
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "d5c4", "e2e3" ],
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c4d5" ], // Declined, normal line
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "g1f3" ],
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5" ],
+
 ];
 
 const OPENINGS_BLACK: &[&[&str]] = &[
-    // Why is this even here?
-    &[ "e2e4", "e7e5" ],
+
+    // -- Against e4 -- //
+
+    // Italian
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "d2d3", "g8f6" ], // Giuoco Piano
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4", "c5b4" ], // Evans Gambit
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "f3g5", "d7d5" ], // Fried liver
+
+    // Ruy Lopez
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5c6", "d7c6" ], // Exchange
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6" ],
+
+    // Four knights
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1c4", "f6e4" ], // Italian-like
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1c4", "f8c5" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "d2d4", "e5d4" ], // Scotch-like
+
+    // Scotch
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4", "f8c5" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4", "g8f6" ],
+    &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f1c4", "g8f6" ],
 
     // Caro-Kann
-    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5" ], // Advance variation
-    &[ "e2e4", "c7c6", "g1f3", "d7d5" ], // Knight bullshittery
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "g1f3", "e7e6" ], // Advance variation
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "f1d3", "f5d3" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "b1c3", "e7e6" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "g2g4", "f5e4" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "b1c3", "b8c6" ], // Exchange variation
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "b1c3", "g8f6" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "g1f3", "b8c6" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "g1f3", "g8f6" ],
+    &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "c2c4", "g8f6" ], // Panov attack
+    &[ "e2e4", "c7c6", "f1c4", "d7d5", "c4b3", "d5e4" ], // Hillbilly attack
+    &[ "e2e4", "c7c6", "g1f3", "d7d5", "b1c3", "c8g4" ], // Two knights attack
+    &[ "e2e4", "c7c6", "g1f3", "d7d5", "e4d5", "c6d5" ],
+    &[ "e2e4", "c7c6", "b1c3", "d7d5" ], // Queen-side knight first
+
+    // -- Against d4 -- //
 
     // Slav Defense
-    &[ "d2d4", "d7d5", "c2c4", "c7c6" ],
+    &[ "d2d4", "d7d5", "c2c4", "c7c6", "b1c3", "g8f6", "g1f3", "e7e6" ],
+    &[ "d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6" ],
+
+    // Queen's Gambit Declined
+
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6" ],
+    &[ "d2d4", "d7d5", "c2c4", "e7e6", "g1f3", "g8f6" ],
+
+    // Anti-London
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "e2e3", "c7c5" ], // Main (?) line
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "g1f3", "c7c5" ], // Knight first, supposed to be bad
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "b1c3", "e7e6" ], // Jobava-London
+    &[ "d2d4", "d7d5", "c1f4", "g8f6", "b1c3", "a7a6" ], // Alternative Jobava line
+
+    // -- Against e3 -- //
+
+    &[ "e2e3", "d7d5", "d2d4", "g8f6", "g1f3", "e7e6" ], // Colle system with strange move order?
+
+    // -- Against Nf3 -- //
+
+    &[ "g1f3", "d7d5", "d2d4", "g8f6" ],
+    &[ "g1f3", "g8f6", "d2d4", "g7g6", "c2c4", "f8g7" ],
 ];
 
 impl BookGenerator for Board {
