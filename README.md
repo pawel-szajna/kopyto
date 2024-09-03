@@ -1,14 +1,9 @@
 # kopyto
 
-Chess engine experiment
-
-## Building
-
-To use the UI, you need to enable `ui` feature (which in turn makes the application depend on more stuff than
-usual). The UI is quite simple though (and allows for making illegal moves. Don't make any illegal moves though.
-I won't help you when the chess police comes)
-
-To use it as an engine, launch it from command line with `uci` parameter.
+Chess engine experiment which perhaps is now slowly turning out maybe to
+be just a chess  engine. It communicates using the UCI interface. It also
+has a [Lichess account](https://lichess.org/@/kopyto_dev) where you can
+challenge it.
 
 ## Change log
 
