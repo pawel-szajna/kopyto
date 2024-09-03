@@ -157,6 +157,7 @@ impl Iterator for MoveList {
 
         let best_move = self.moves[max_idx];
         self.weights.swap(self.used, max_idx);
+        self.moves.swap(self.used, max_idx);
         self.used += 1;
 
         Some(best_move)
