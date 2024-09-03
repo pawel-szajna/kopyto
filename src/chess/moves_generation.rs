@@ -2,7 +2,7 @@ use super::board::Board;
 use super::types::Side;
 use super::masks;
 use super::moves::{Move, Promotion};
-#[cfg(any(test, feature = "ui"))]
+#[cfg(test)]
 use super::util;
 use std::time::SystemTime;
 
@@ -17,9 +17,9 @@ pub trait MoveGenerator: pimpl::MoveGenerator {
         self.attack_mask(side)
     }
 
-    #[cfg(any(test, feature = "ui"))]
+    #[cfg(test)]
     fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move>;
-    #[cfg(any(test, feature = "ui"))]
+    #[cfg(test)]
     fn generate_side_moves_for(&mut self, side: Side, file: usize, rank: usize) -> Vec<Move> {
         self.generate_moves_for_impl(side, util::coords_to_mask(file, rank))
     }
@@ -30,7 +30,7 @@ impl MoveGenerator for Board {
         self.generate_side_moves(self.side_to_move(), captures_only)
     }
 
-    #[cfg(any(test, feature = "ui"))]
+    #[cfg(test)]
     fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move> {
         self.generate_side_moves_for(self.side_to_move(), file, rank)
     }
@@ -134,7 +134,7 @@ mod pimpl {
     pub trait MoveGenerator {
         fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move>;
 
-        #[cfg(any(test, feature = "ui"))]
+        #[cfg(test)]
         fn generate_moves_for_impl(&mut self, side: Side, mask: u64) -> Vec<Move>;
 
         fn check_mask(&self, side: Side, king: u64) -> (u64, u64);
@@ -201,7 +201,7 @@ mod pimpl {
             moves
         }
 
-        #[cfg(any(test, feature = "ui"))]
+        #[cfg(test)]
         fn generate_moves_for_impl(&mut self, side: Side, mask: u64) -> Vec<Move> {
             let mut moves = self.generate_moves_impl(side, false);
             moves.retain(|m| m.get_from() == mask.trailing_zeros() as u16);

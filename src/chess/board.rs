@@ -460,20 +460,6 @@ impl Board {
         self.any_piece & mask != 0
     }
 
-    #[cfg(feature = "ui")]
-    pub fn check_square(&self, mask: u64) -> Option<(Side, Piece)> {
-        if !self.has_piece(mask) {
-            return None;
-        }
-
-        let white_piece = self.check_piece(Side::White, mask);
-        if white_piece.is_some() {
-            return Some((Side::White, white_piece?));
-        }
-
-        Some((Side::Black, self.check_piece(Side::Black, mask)?))
-    }
-
     pub fn get_attacks(&mut self, side: Side) -> u64 {
         match self.attacks[side] {
             Some(value) => value,
@@ -737,13 +723,6 @@ impl Board {
 
     pub fn side_to_move(&self) -> Side {
         self.current_color
-    }
-}
-
-#[cfg(feature = "ui")]
-impl Board {
-    pub fn last_move(&self) -> Option<(u64, u64)> {
-        self.history.last().map_or(None, |x| Some((x.from, x.to)))
     }
 }
 
