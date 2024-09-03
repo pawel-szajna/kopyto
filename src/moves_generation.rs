@@ -1,7 +1,7 @@
 use super::board::Board;
 use super::types::Side;
 use super::masks;
-use super::moves::{Move, Promotion};
+use crate::types::{Move, Promotion};
 #[cfg(test)]
 use super::util;
 use std::time::SystemTime;
@@ -106,7 +106,7 @@ mod attacks {
 
 mod pimpl {
     use super::*;
-    use crate::moves::Piece;
+    use crate::types::Piece;
 
     fn generate_piece<F>(moves: &mut Vec<Move>, mut mask: u64, generator: F)
     where

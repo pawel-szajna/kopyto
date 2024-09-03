@@ -1,15 +1,6 @@
-use super::util;
+use crate::util;
+use crate::types::Piece;
 use std::fmt;
-
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-pub enum Piece {
-    King,
-    Queen,
-    Rook,
-    Bishop,
-    Knight,
-    Pawn,
-}
 
 #[repr(u16)]
 #[derive(Debug)]

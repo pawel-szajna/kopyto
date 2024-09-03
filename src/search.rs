@@ -1,5 +1,5 @@
 use crate::board::Board;
-use crate::moves::Move;
+use crate::types::Move;
 
 mod weights {
     type Weights = [i64; 64];
@@ -177,11 +177,10 @@ mod pimpl {
     use std::thread;
     use std::time::{Duration, SystemTime};
     use super::*;
-    use crate::types::Side;
+    use crate::types::{Piece, Side};
     use crate::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use rand::Rng;
-    use crate::moves::Piece;
     use crate::transpositions::Score;
     use crate::util;
 

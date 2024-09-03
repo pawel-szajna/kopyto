@@ -2,10 +2,9 @@ use crate::book::{Book, BookGenerator};
 use crate::magics::{create_bishop_magics, create_rook_magics, Magics};
 use crate::transpositions::{Transpositions, Zobrist};
 use crate::masks;
-use crate::moves::*;
 use crate::moves_generation::MoveGenerator;
 use crate::util::*;
-use crate::types::Side;
+use crate::types::{Move, Piece, Side};
 
 pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
@@ -729,6 +728,7 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Promotion;
 
     impl Board {
         fn make_move_str(&mut self, from: &str, to: &str) {

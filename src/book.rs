@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use crate::board::Board;
-use crate::types::Side;
-use crate::moves::Move;
+use crate::types::{Move, Side};
 use crate::moves_generation::MoveGenerator;
 
 type PositionMap = HashMap<u64, Vec<Move>>;
