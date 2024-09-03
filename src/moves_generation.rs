@@ -1,9 +1,8 @@
-use super::board::Board;
-use super::types::Side;
-use super::masks;
-use crate::types::{Move, Promotion};
+use crate::board::Board;
+use crate::masks;
+use crate::types::{Move, Promotion, Side};
 #[cfg(test)]
-use super::util;
+use crate::util;
 use std::time::SystemTime;
 
 pub trait MoveGenerator: pimpl::MoveGenerator {
