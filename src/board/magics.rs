@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 // use std::time::SystemTime;
 // use rand::RngCore;
 use crate::masks;
@@ -150,7 +151,7 @@ struct Entry {
 }
 
 impl Entry {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             shift: 0,
             offset: 0,
@@ -170,7 +171,7 @@ pub struct Magics {
 }
 
 impl Magics {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             table: vec![],
             magic: [Entry::new(); 64],
@@ -311,10 +312,13 @@ where F: Fn(Square, Bitboard) -> Bitboard {
     result
 }
 
-pub fn create_rook_magics() -> Magics {
+fn create_rook_magics() -> Magics {
     create_magics(/*"rook", 13,*/ &rook, &MAGICS_ROOK)
 }
 
-pub fn create_bishop_magics() -> Magics {
+fn create_bishop_magics() -> Magics {
     create_magics(/*"bishop", 10,*/ &bishop, &MAGICS_BISHOP)
 }
+
+pub static ROOK_MAGICS: LazyLock<Magics> = LazyLock::new(|| create_rook_magics());
+pub static BISHOP_MAGICS: LazyLock<Magics> = LazyLock::new(|| create_bishop_magics());

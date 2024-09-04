@@ -77,8 +77,8 @@ fn perft_impl(board: &mut Board, depth: usize, init: bool) -> u64 {
 }
 
 mod attacks {
-    use crate::magics::Magics;
     use super::*;
+    use crate::board::magics;
 
     pub fn pawn(side: Side, idx: Square) -> Bitboard {
         masks::PAWN_TARGETS[side][idx]
@@ -88,12 +88,12 @@ mod attacks {
         masks::KNIGHT_TARGETS[idx]
     }
 
-    pub fn bishop(idx: Square, occupied: Bitboard, magics: &Magics) -> Bitboard {
-        Bitboard::from_u64(magics.get(idx as usize, occupied))
+    pub fn bishop(idx: Square, occupied: Bitboard) -> Bitboard {
+        Bitboard::from_u64(magics::BISHOP_MAGICS.get(idx as usize, occupied))
     }
 
-    pub fn rook(idx: Square, occupied: Bitboard, magics: &Magics) -> Bitboard {
-        Bitboard::from_u64(magics.get(idx as usize, occupied))
+    pub fn rook(idx: Square, occupied: Bitboard) -> Bitboard {
+        Bitboard::from_u64(magics::ROOK_MAGICS.get(idx as usize, occupied))
     }
 
     pub fn king(idx: Square) -> Bitboard {
@@ -218,14 +218,14 @@ mod pimpl {
                 check_mask |= knights;
             }
 
-            let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece, &self.bishop_magics);
+            let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece);
             if bishops.not_empty() {
                 checks += 1;
                 let attacker_idx = bishops.peek();
                 check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
             }
 
-            let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece, &self.rook_magics);
+            let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece);
             if rooks.not_empty() {
                 checks += rooks.count() as u64;
                 let attacker_idx = rooks.peek();
@@ -265,12 +265,12 @@ mod pimpl {
 
             let bishops = self.bishops[side] | self.queens[side];
             for bishop_idx in bishops {
-                mask |= attacks::bishop(bishop_idx, occupied, &self.bishop_magics);
+                mask |= attacks::bishop(bishop_idx, occupied);
             }
 
             let rooks = self.rooks[side] | self.queens[side];
             for rook_idx in rooks {
-                mask |= attacks::rook(rook_idx, occupied, &self.rook_magics);
+                mask |= attacks::rook(rook_idx, occupied);
             }
 
             mask |= attacks::king(self.kings[side].peek());
@@ -298,7 +298,7 @@ mod pimpl {
             self.pin_mask(
                 side,
                 king_idx,
-                attacks::rook(king_idx, self.occupied[opponent], &self.rook_magics) & (self.rooks[opponent] | self.queens[opponent]))
+                attacks::rook(king_idx, self.occupied[opponent]) & (self.rooks[opponent] | self.queens[opponent]))
         }
 
         fn diagonal_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard {
@@ -306,7 +306,7 @@ mod pimpl {
             self.pin_mask(
                 side,
                 king_idx,
-                attacks::bishop(king_idx, self.occupied[opponent], &self.bishop_magics) & (self.bishops[opponent] | self.queens[opponent]),
+                attacks::bishop(king_idx, self.occupied[opponent]) & (self.bishops[opponent] | self.queens[opponent]),
             )
         }
 
@@ -443,7 +443,7 @@ mod pimpl {
                     if king_mask.not_empty() && rook_mask.not_empty() {
                         let pawns_mask = enemy_pawn | source;
                         let king_idx = self.kings[side].peek();
-                        if (attacks::rook(king_idx, self.any_piece & !pawns_mask, &self.rook_magics) & rook_mask).not_empty() {
+                        if (attacks::rook(king_idx, self.any_piece & !pawns_mask) & rook_mask).not_empty() {
                             break;
                         }
                     }
@@ -485,23 +485,23 @@ mod pimpl {
 
         fn generate_rook(&self, rook_idx: Square, parallel_pin_mask: Bitboard) -> Bitboard {
             match (parallel_pin_mask & Bitboard::from(rook_idx)).not_empty() {
-                true => attacks::rook(rook_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
-                false => attacks::rook(rook_idx, self.any_piece, &self.rook_magics),
+                true => attacks::rook(rook_idx, self.any_piece) & parallel_pin_mask,
+                false => attacks::rook(rook_idx, self.any_piece),
             }
         }
 
         fn generate_bishop(&self, bishop_idx: Square, diagonal_pin_mask: Bitboard) -> Bitboard {
             match (diagonal_pin_mask & Bitboard::from(bishop_idx)).not_empty() {
-                true => attacks::bishop(bishop_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
-                false => attacks::bishop(bishop_idx, self.any_piece, &self.bishop_magics),
+                true => attacks::bishop(bishop_idx, self.any_piece) & diagonal_pin_mask,
+                false => attacks::bishop(bishop_idx, self.any_piece),
             }
         }
 
         fn generate_queen(&self, queen_idx: Square, parallel_pin_mask: Bitboard, diagonal_pin_mask: Bitboard) -> Bitboard {
             match Bitboard::from(queen_idx) {
-                mask if (mask & diagonal_pin_mask).not_empty() => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
-                mask if (mask & parallel_pin_mask).not_empty() => attacks::rook(queen_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
-                _ => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) | attacks::rook(queen_idx, self.any_piece, &self.rook_magics),
+                mask if (mask & diagonal_pin_mask).not_empty() => attacks::bishop(queen_idx, self.any_piece) & diagonal_pin_mask,
+                mask if (mask & parallel_pin_mask).not_empty() => attacks::rook(queen_idx, self.any_piece) & parallel_pin_mask,
+                _ => attacks::bishop(queen_idx, self.any_piece) | attacks::rook(queen_idx, self.any_piece),
             }
         }
     }

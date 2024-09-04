@@ -1,5 +1,4 @@
 use crate::book::{Book, BookGenerator};
-use crate::magics::{create_bishop_magics, create_rook_magics, Magics};
 use crate::transpositions::{Transpositions, Zobrist};
 use crate::masks;
 use crate::moves_generation::MoveGenerator;
@@ -84,9 +83,6 @@ pub struct Board {
 
     pub last_eval: i64,
 
-    pub bishop_magics: Magics,
-    pub rook_magics: Magics,
-
     pub book: Book,
 }
 
@@ -123,9 +119,6 @@ impl Board {
             moves: [None, None],
 
             last_eval: 0,
-
-            bishop_magics: create_bishop_magics(),
-            rook_magics: create_rook_magics(),
 
             book: Book::new(),
         }
