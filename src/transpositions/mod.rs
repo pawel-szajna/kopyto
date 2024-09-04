@@ -1,5 +1,7 @@
 mod transpositions;
+mod zobrist;
+mod score;
 
 pub use transpositions::Transpositions;
-pub use transpositions::Score;
-pub use transpositions::Zobrist;
+pub use score::Score;
+pub use zobrist::Zobrist;
