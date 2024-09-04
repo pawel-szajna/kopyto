@@ -54,41 +54,41 @@ impl History {
 }
 
 pub struct Board {
-    pub(super) kings: ColorBitboard,
-    pub(super) queens: ColorBitboard,
-    pub(super) rooks: ColorBitboard,
-    pub(super) bishops: ColorBitboard,
-    pub(super) knights: ColorBitboard,
-    pub(super) pawns: ColorBitboard,
+    pub kings: ColorBitboard,
+    pub queens: ColorBitboard,
+    pub rooks: ColorBitboard,
+    pub bishops: ColorBitboard,
+    pub knights: ColorBitboard,
+    pub pawns: ColorBitboard,
 
-    pub(super) occupied: ColorBitboard,
-    pub(super) any_piece: Bitboard,
+    pub occupied: ColorBitboard,
+    pub any_piece: Bitboard,
 
-    pub(super) castle_kingside: ColorBool,
-    pub(super) castle_queenside: ColorBool,
+    pub castle_kingside: ColorBool,
+    pub castle_queenside: ColorBool,
 
     current_color: Side,
 
     history: Vec<History>,
     zobrist: Zobrist,
-    pub(super) transpositions: Transpositions,
+    pub transpositions: Transpositions,
     hash: u64,
 
-    pub(super) half_moves_clock: u32,
-    pub(super) full_moves_count: u32,
+    pub half_moves_clock: u32,
+    pub full_moves_count: u32,
 
-    pub(super) en_passant: Bitboard,
+    pub en_passant: Bitboard,
     check: [Option<bool>; 2],
     checkmate: [Option<bool>; 2],
-    pub(super) attacks: [Option<Bitboard>; 2],
-    pub(super) moves: [Option<Vec<Move>>; 2],
+    pub attacks: [Option<Bitboard>; 2],
+    pub moves: [Option<Vec<Move>>; 2],
 
-    pub(super) last_eval: i64,
+    pub last_eval: i64,
 
-    pub(super) bishop_magics: Magics,
-    pub(super) rook_magics: Magics,
+    pub bishop_magics: Magics,
+    pub rook_magics: Magics,
 
-    pub(super) book: Book,
+    pub book: Book,
 }
 
 impl Board {
@@ -496,7 +496,7 @@ impl Board {
         }
     }
 
-    pub(super) fn check_piece(&self, side: Side, mask: Bitboard) -> Option<Piece> {
+    pub fn check_piece(&self, side: Side, mask: Bitboard) -> Option<Piece> {
         if !self.has_piece(mask) || (self.occupied[side] & mask).empty() {
             return None;
         }

@@ -1,13 +1,14 @@
 mod board;
 mod book;
-mod magics;
-mod masks;
-mod moves_generation;
 mod search;
-mod transpositions;
 mod types;
 mod uci;
 mod util;
+mod moves_generation;
+mod transpositions;
+
+use board::masks;
+use board::magics;
 
 fn main() {
     uci::start();
