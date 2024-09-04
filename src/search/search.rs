@@ -1,5 +1,5 @@
 use crate::board::Board;
-use crate::types::{Bitboard, Move};
+use crate::types::Move;
 
 pub struct Options {
     pub white_time: u64,
@@ -25,50 +25,6 @@ impl Options {
     }
 }
 
-pub struct MoveList {
-    moves: Vec<Move>,
-    weights: Vec<i64>,
-    used: usize,
-}
-
-impl MoveList {
-    fn new(moves: Vec<Move>, weights: Vec<i64>) -> Self {
-        assert_eq!(moves.len(), weights.len());
-        Self {
-            moves,
-            weights,
-            used: 0,
-        }
-    }
-}
-
-impl Iterator for MoveList {
-    type Item = Move;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.used >= self.moves.len() {
-            return None;
-        }
-
-        let mut max_value = i64::MIN;
-        let mut max_idx = 0;
-        for i in self.used..self.moves.len() {
-            let weight = self.weights[i];
-            if weight > max_value {
-                max_idx = i;
-                max_value = weight;
-            }
-        }
-
-        let best_move = self.moves[max_idx];
-        self.weights.swap(self.used, max_idx);
-        self.moves.swap(self.used, max_idx);
-        self.used += 1;
-
-        Some(best_move)
-    }
-}
-
 pub trait Search: pimpl::SearchImpl {
     fn search(&mut self, options: Options) -> Move {
         self.search_impl(options)
@@ -82,14 +38,14 @@ mod pimpl {
     use std::thread;
     use std::time::{Duration, SystemTime};
     use super::*;
-    use crate::types::{Piece, Side};
-    use crate::moves_generation::MoveGenerator;
+    use crate::types::Side;
+    use crate::moves_generation::{MoveGenerator, MoveList};
     use rand::prelude::SliceRandom;
     use rand::Rng;
     use crate::board::FenProducer;
     use crate::search::eval;
     use crate::transpositions::Score;
-    use crate::util;
+    use crate::{moves_generation, util};
 
     const NULL_MOVE: Move = Move::new();
     const MIN_MOVE_TIME: u128 = 200;
@@ -125,7 +81,6 @@ mod pimpl {
         fn search_impl(&mut self, options: Options) -> Move;
 
         fn get_moves(&mut self, captures_only: bool) -> MoveList;
-        fn order_moves(&self, moves: &Vec<Move>) -> Vec<i64>;
 
         fn bishop_pair(&self, side: Side) -> bool;
         fn insufficient_material(&self) -> bool;
@@ -292,59 +247,8 @@ mod pimpl {
 
         fn get_moves(&mut self, captures_only: bool) -> MoveList {
             let moves = self.generate_moves(captures_only);
-            let weights = self.order_moves(&moves);
+            let weights = moves_generation::order(self, &moves);
             MoveList::new(moves, weights)
-        }
-
-        fn order_moves(&self, moves: &Vec<Move>) -> Vec<i64> {
-            let side = self.side_to_move();
-            let opponent = !side;
-            let attacks = self.occupied[opponent];
-
-            let piece_value = |p: Option<Piece>| match p {
-                None => 0,
-                Some(Piece::Pawn) => 10,
-                Some(Piece::Knight) => 30,
-                Some(Piece::Bishop) => 32,
-                Some(Piece::Rook) => 50,
-                Some(Piece::Queen) => 90,
-                Some(Piece::King) => 50,
-            };
-
-            let hash_move = self.transpositions.get_move(self.key());
-
-            let mut verified = [false; 64];
-            let mut pieces = [None; 64];
-
-            for m in &*moves {
-                let source = m.get_from();
-                let target = m.get_to();
-                if !verified[source] {
-                    pieces[source] = self.check_piece(side, Bitboard::from(source));
-                    verified[source] = true;
-                }
-                if !verified[target] {
-                    pieces[target] = self.check_piece(opponent, Bitboard::from(target));
-                    verified[target] = true;
-                }
-            }
-
-            moves.iter().map(|m| {
-                match hash_move {
-                    Some(hashed) if &hashed == m => 10000,
-                    _ => {
-                        let target_mask = Bitboard::from(m.get_to());
-                        match (target_mask & attacks).not_empty() {
-                            false => 0,
-                            true => {
-                                let defender_value = piece_value(pieces[m.get_to() as usize]);
-                                let attacker_value = piece_value(pieces[m.get_from() as usize]);
-                                defender_value * 10 - attacker_value
-                            }
-                        }
-                    },
-                }
-            }).collect()
         }
 
         fn bishop_pair(&self, side: Side) -> bool {
@@ -402,7 +306,7 @@ mod pimpl {
         }
 
         fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &MoveList) -> Option<i64> {
-            match moves.moves.is_empty() {
+            match moves.is_empty() {
                 false => None,
                 true => Some(match self.in_check(self.side_to_move()) {
                     false => 0, // stalemate
