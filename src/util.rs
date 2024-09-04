@@ -1,12 +1,5 @@
 use std::str::Chars;
-
-pub fn coords_to_mask(file: usize, rank: usize) -> u64 {
-    1u64 << coords_to_idx(file, rank)
-}
-
-pub fn coords_to_idx(file: usize, rank: usize) -> usize {
-    rank * 8 + file
-}
+use crate::types::Square;
 
 #[allow(dead_code)]
 pub fn print_mask(title: &str, mask: u64) {
@@ -52,7 +45,7 @@ pub fn mask_to_str(mask: u64) -> String {
     idx_to_str(mask.trailing_zeros() as usize)
 }
 
-pub fn str_to_idx(pos: &str) -> usize {
+pub fn str_to_idx(pos: &str) -> Square {
     fn get_file(pos: &mut Chars) -> usize {
         match pos.next() {
             Some('a') => 0,
@@ -82,7 +75,7 @@ pub fn str_to_idx(pos: &str) -> usize {
     let mut pos = pos.chars();
     let file = get_file(&mut pos);
     let rank = get_rank(&mut pos);
-    coords_to_idx(file, rank)
+    Square::from_coords(file, rank)
 }
 
 pub fn eval_to_str(eval: i64) -> String {

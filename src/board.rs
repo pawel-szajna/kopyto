@@ -4,22 +4,21 @@ use crate::transpositions::{Transpositions, Zobrist};
 use crate::masks;
 use crate::moves_generation::MoveGenerator;
 use crate::util::*;
-use crate::types::{Move, Piece, Side};
+use crate::types::{Bitboard, Move, Piece, Side, Square};
 
-pub type Bitboard = u64;
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 
 struct History {
-    from: u64,
-    to: u64,
+    from: Bitboard,
+    to: Bitboard,
     castle_kingside: ColorBool,
     castle_queenside: ColorBool,
     capture: Option<Piece>,
     half_moves: u32,
     promotion: bool,
-    en_passant: u64,
-    attacks: [Option<u64>; 2],
+    en_passant: Bitboard,
+    attacks: [Option<Bitboard>; 2],
     check: [Option<bool>; 2],
     checkmate: [Option<bool>; 2],
     hash: u64,
@@ -27,12 +26,12 @@ struct History {
 
 impl History {
     pub fn new(
-        from: u64,
-        to: u64,
+        from: Bitboard,
+        to: Bitboard,
         castle_kingside: ColorBool,
         castle_queenside: ColorBool,
         half_moves: u32,
-        en_passant: u64,
+        en_passant: Bitboard,
         check: [Option<bool>; 2],
         checkmate: [Option<bool>; 2],
         hash: u64,
@@ -78,10 +77,10 @@ pub struct Board {
     pub(super) half_moves_clock: u32,
     pub(super) full_moves_count: u32,
 
-    pub(super) en_passant: u64,
+    pub(super) en_passant: Bitboard,
     check: [Option<bool>; 2],
     checkmate: [Option<bool>; 2],
-    pub(super) attacks: [Option<u64>; 2],
+    pub(super) attacks: [Option<Bitboard>; 2],
     pub(super) moves: [Option<Vec<Move>>; 2],
 
     pub(super) last_eval: i64,
@@ -95,15 +94,15 @@ pub struct Board {
 impl Board {
     pub fn new() -> Self {
         Self {
-            kings: [0, 0],
-            queens: [0, 0],
-            rooks: [0, 0],
-            bishops: [0, 0],
-            knights: [0, 0],
-            pawns: [0, 0],
+            kings: [Bitboard::EMPTY, Bitboard::EMPTY],
+            queens: [Bitboard::EMPTY, Bitboard::EMPTY],
+            rooks: [Bitboard::EMPTY, Bitboard::EMPTY],
+            bishops: [Bitboard::EMPTY, Bitboard::EMPTY],
+            knights: [Bitboard::EMPTY, Bitboard::EMPTY],
+            pawns: [Bitboard::EMPTY, Bitboard::EMPTY],
 
-            occupied: [0, 0],
-            any_piece: 0,
+            occupied: [Bitboard::EMPTY, Bitboard::EMPTY],
+            any_piece: Bitboard::EMPTY,
 
             castle_kingside: [true, true],
             castle_queenside: [true, true],
@@ -118,7 +117,7 @@ impl Board {
             half_moves_clock: 0,
             full_moves_count: 1,
 
-            en_passant: 0,
+            en_passant: Bitboard::EMPTY,
             check: [None, None],
             checkmate: [None, None],
             attacks: [None, None],
@@ -151,18 +150,18 @@ impl Board {
                     Some('6') => file += 5,
                     Some('7') => file += 6,
                     Some('8') => file += 7,
-                    Some('k') => board.put_king(Side::Black, coords_to_mask(file, 7 - rank)),
-                    Some('K') => board.put_king(Side::White, coords_to_mask(file, 7 - rank)),
-                    Some('q') => board.put_queen(Side::Black, coords_to_mask(file, 7 - rank)),
-                    Some('Q') => board.put_queen(Side::White, coords_to_mask(file, 7 - rank)),
-                    Some('r') => board.put_rook(Side::Black, coords_to_mask(file, 7 - rank)),
-                    Some('R') => board.put_rook(Side::White, coords_to_mask(file, 7 - rank)),
-                    Some('p') => board.put_pawn(Side::Black, coords_to_mask(file, 7 - rank)),
-                    Some('P') => board.put_pawn(Side::White, coords_to_mask(file, 7 - rank)),
-                    Some('n') => board.put_knight(Side::Black, coords_to_mask(file, 7 - rank)),
-                    Some('N') => board.put_knight(Side::White, coords_to_mask(file, 7 - rank)),
-                    Some('b') => board.put_bishop(Side::Black, coords_to_mask(file, 7 - rank)),
-                    Some('B') => board.put_bishop(Side::White, coords_to_mask(file, 7 - rank)),
+                    Some('k') => board.put_king(Side::Black, Bitboard::from_coords(file, 7 - rank)),
+                    Some('K') => board.put_king(Side::White, Bitboard::from_coords(file, 7 - rank)),
+                    Some('q') => board.put_queen(Side::Black, Bitboard::from_coords(file, 7 - rank)),
+                    Some('Q') => board.put_queen(Side::White, Bitboard::from_coords(file, 7 - rank)),
+                    Some('r') => board.put_rook(Side::Black, Bitboard::from_coords(file, 7 - rank)),
+                    Some('R') => board.put_rook(Side::White, Bitboard::from_coords(file, 7 - rank)),
+                    Some('p') => board.put_pawn(Side::Black, Bitboard::from_coords(file, 7 - rank)),
+                    Some('P') => board.put_pawn(Side::White, Bitboard::from_coords(file, 7 - rank)),
+                    Some('n') => board.put_knight(Side::Black, Bitboard::from_coords(file, 7 - rank)),
+                    Some('N') => board.put_knight(Side::White, Bitboard::from_coords(file, 7 - rank)),
+                    Some('b') => board.put_bishop(Side::Black, Bitboard::from_coords(file, 7 - rank)),
+                    Some('B') => board.put_bishop(Side::White, Bitboard::from_coords(file, 7 - rank)),
                     _ => {}
                 }
                 file += 1;
@@ -204,7 +203,8 @@ impl Board {
                 Some(' ') => break,
                 Some(file) if file.is_alphabetic() => {
                     let rank = fen.next().unwrap();
-                    board.en_passant = 1u64 << str_to_idx(format!("{}{}", file, rank).as_str());
+                    // TODO: fix this monstrosity
+                    board.en_passant = Bitboard::from(Square::from(str_to_idx(format!("{}{}", file, rank).as_str())))
                 }
                 _ => panic!("Invalid fen, expected en passant data"),
             }
@@ -240,30 +240,30 @@ impl Board {
     pub fn from_starting_position() -> Board {
         let mut board = Board::new();
 
-        board.put_king(Side::White, coords_to_mask(4, 0));
-        board.put_king(Side::Black, coords_to_mask(4, 7));
+        board.put_king(Side::White, Bitboard::from_coords(4, 0));
+        board.put_king(Side::Black, Bitboard::from_coords(4, 7));
 
-        board.put_queen(Side::White, coords_to_mask(3, 0));
-        board.put_queen(Side::Black, coords_to_mask(3, 7));
+        board.put_queen(Side::White, Bitboard::from_coords(3, 0));
+        board.put_queen(Side::Black, Bitboard::from_coords(3, 7));
 
-        board.put_rook(Side::White, coords_to_mask(0, 0));
-        board.put_rook(Side::White, coords_to_mask(7, 0));
-        board.put_rook(Side::Black, coords_to_mask(0, 7));
-        board.put_rook(Side::Black, coords_to_mask(7, 7));
+        board.put_rook(Side::White, Bitboard::from_coords(0, 0));
+        board.put_rook(Side::White, Bitboard::from_coords(7, 0));
+        board.put_rook(Side::Black, Bitboard::from_coords(0, 7));
+        board.put_rook(Side::Black, Bitboard::from_coords(7, 7));
 
-        board.put_bishop(Side::White, coords_to_mask(2, 0));
-        board.put_bishop(Side::White, coords_to_mask(5, 0));
-        board.put_bishop(Side::Black, coords_to_mask(2, 7));
-        board.put_bishop(Side::Black, coords_to_mask(5, 7));
+        board.put_bishop(Side::White, Bitboard::from_coords(2, 0));
+        board.put_bishop(Side::White, Bitboard::from_coords(5, 0));
+        board.put_bishop(Side::Black, Bitboard::from_coords(2, 7));
+        board.put_bishop(Side::Black, Bitboard::from_coords(5, 7));
 
-        board.put_knight(Side::White, coords_to_mask(1, 0));
-        board.put_knight(Side::White, coords_to_mask(6, 0));
-        board.put_knight(Side::Black, coords_to_mask(1, 7));
-        board.put_knight(Side::Black, coords_to_mask(6, 7));
+        board.put_knight(Side::White, Bitboard::from_coords(1, 0));
+        board.put_knight(Side::White, Bitboard::from_coords(6, 0));
+        board.put_knight(Side::Black, Bitboard::from_coords(1, 7));
+        board.put_knight(Side::Black, Bitboard::from_coords(6, 7));
 
         for file in 0..8 {
-            board.put_pawn(Side::White, coords_to_mask(file, 1));
-            board.put_pawn(Side::Black, coords_to_mask(file, 6));
+            board.put_pawn(Side::White, Bitboard::from_coords(file, 1));
+            board.put_pawn(Side::Black, Bitboard::from_coords(file, 6));
         }
 
         board.update_hash();
@@ -272,7 +272,7 @@ impl Board {
         board
     }
 
-    fn mask_to_symbol(&self, mask: u64) -> char {
+    fn mask_to_symbol(&self, mask: Bitboard) -> char {
         const SYMBOLS_KING: [char; 2] = ['K', 'k'];
         const SYMBOLS_QUEEN: [char; 2] = ['Q', 'q'];
         const SYMBOLS_ROOK: [char; 2] = ['R', 'r'];
@@ -280,19 +280,19 @@ impl Board {
         const SYMBOLS_KNIGHT: [char; 2] = ['N', 'n'];
         const SYMBOLS_PAWN: [char; 2] = ['P', 'p'];
 
-        let side = ((self.occupied[Side::White] & mask) == 0) as usize;
+        let side = (self.occupied[Side::White] & mask).empty() as usize;
 
-        if (self.kings[side] & mask) != 0 {
+        if !(self.kings[side] & mask).empty() {
             SYMBOLS_KING[side]
-        } else if (self.queens[side] & mask) != 0 {
+        } else if !(self.queens[side] & mask).empty() {
             SYMBOLS_QUEEN[side]
-        } else if (self.rooks[side] & mask) != 0 {
+        } else if !(self.rooks[side] & mask).empty() {
             SYMBOLS_ROOK[side]
-        } else if (self.bishops[side] & mask) != 0 {
+        } else if !(self.bishops[side] & mask).empty() {
             SYMBOLS_BISHOP[side]
-        } else if (self.knights[side] & mask) != 0 {
+        } else if !(self.knights[side] & mask).empty() {
             SYMBOLS_KNIGHT[side]
-        } else if (self.pawns[side] & mask) != 0 {
+        } else if !(self.pawns[side] & mask).empty() {
             SYMBOLS_PAWN[side]
         } else {
             '!'
@@ -302,14 +302,14 @@ impl Board {
     pub fn export_fen(&self) -> String {
         let mut result = String::new();
 
-        for rank in 0u64..8u64 {
+        for rank in 0..8 {
             let mut empty_counter = 0;
 
-            for file in 0u64..8u64 {
-                let idx = (7 - rank) * 8 + file;
-                let mask = 1u64 << idx;
+            for file in 0..8 {
+                let idx = Square::from((7 - rank) * 8 + file);
+                let mask = Bitboard::from(idx);
 
-                if (self.any_piece & mask) == 0 {
+                if (self.any_piece & mask).empty() {
                     empty_counter += 1;
                     continue;
                 }
@@ -361,8 +361,8 @@ impl Board {
 
         result.push(' ');
         match self.en_passant {
-            0 => result.push('-'),
-            x => result.push_str(mask_to_str(x).as_str()),
+            Bitboard::EMPTY => result.push('-'),
+            x => result.push_str(x.peek().to_string().as_str()),
         }
 
         result.push_str(format!(" {}", self.half_moves_clock).as_str());
@@ -375,13 +375,13 @@ impl Board {
     pub fn export_graph(&self) -> String {
         let mut result = String::new();
 
-        for rank in 0u64..8u64 {
+        for rank in 0..8 {
             result.push_str(format!("{} ", 8 - rank).as_str());
-            for file in 0u64..8u64 {
-                let idx = (7 - rank) * 8 + file;
-                let mask = 1u64 << idx;
+            for file in 0..8 {
+                let idx = Square::from((7 - rank) * 8 + file);
+                let mask = Bitboard::from(idx);
 
-                result.push(if (self.any_piece & mask) == 0 {
+                result.push(if (self.any_piece & mask).empty() {
                     '.'
                 } else {
                     self.mask_to_symbol(mask)
@@ -396,42 +396,42 @@ impl Board {
         result
     }
 
-    fn put_piece_occupancy(&mut self, side: Side, mask: u64) {
+    fn put_piece_occupancy(&mut self, side: Side, mask: Bitboard) {
         self.occupied[side] |= mask;
         self.any_piece |= mask;
     }
 
-    fn put_king(&mut self, side: Side, mask: u64) {
+    fn put_king(&mut self, side: Side, mask: Bitboard) {
         self.kings[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_queen(&mut self, side: Side, mask: u64) {
+    fn put_queen(&mut self, side: Side, mask: Bitboard) {
         self.queens[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_rook(&mut self, side: Side, mask: u64) {
+    fn put_rook(&mut self, side: Side, mask: Bitboard) {
         self.rooks[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_bishop(&mut self, side: Side, mask: u64) {
+    fn put_bishop(&mut self, side: Side, mask: Bitboard) {
         self.bishops[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_knight(&mut self, side: Side, mask: u64) {
+    fn put_knight(&mut self, side: Side, mask: Bitboard) {
         self.knights[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_pawn(&mut self, side: Side, mask: u64) {
+    fn put_pawn(&mut self, side: Side, mask: Bitboard) {
         self.pawns[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_piece(&mut self, side: Side, mask: u64, piece: Piece) {
+    fn put_piece(&mut self, side: Side, mask: Bitboard, piece: Piece) {
         match piece {
             Piece::King => self.put_king(side, mask),
             Piece::Queen => self.put_queen(side, mask),
@@ -442,7 +442,7 @@ impl Board {
         }
     }
 
-    fn remove_piece(&mut self, mask: u64) {
+    fn remove_piece(&mut self, mask: Bitboard) {
         self.any_piece &= !mask;
         for side in [Side::White, Side::Black] {
             self.occupied[side] &= !mask;
@@ -455,11 +455,11 @@ impl Board {
         }
     }
 
-    pub fn has_piece(&self, mask: u64) -> bool {
-        self.any_piece & mask != 0
+    pub fn has_piece(&self, mask: Bitboard) -> bool {
+        !(self.any_piece & mask).empty()
     }
 
-    pub fn get_attacks(&mut self, side: Side) -> u64 {
+    pub fn get_attacks(&mut self, side: Side) -> Bitboard {
         match self.attacks[side] {
             Some(value) => value,
             None => {
@@ -474,7 +474,7 @@ impl Board {
         match self.check[side] {
             Some(value) => value,
             None => {
-                let is_in_check = self.kings[side] & self.get_attacks(!side) != 0;
+                let is_in_check = (self.kings[side] & self.get_attacks(!side)).not_empty();
                 self.check[side] = Some(is_in_check);
                 is_in_check
             }
@@ -496,32 +496,32 @@ impl Board {
         }
     }
 
-    pub(super) fn check_piece(&self, side: Side, mask: u64) -> Option<Piece> {
-        if !self.has_piece(mask) || (self.occupied[side] & mask) == 0 {
+    pub(super) fn check_piece(&self, side: Side, mask: Bitboard) -> Option<Piece> {
+        if !self.has_piece(mask) || (self.occupied[side] & mask).empty() {
             return None;
         }
 
-        if (self.kings[side] & mask) != 0 {
+        if (self.kings[side] & mask).not_empty() {
             return Some(Piece::King);
         }
 
-        if (self.queens[side] & mask) != 0 {
+        if (self.queens[side] & mask).not_empty() {
             return Some(Piece::Queen);
         }
 
-        if (self.rooks[side] & mask) != 0 {
+        if (self.rooks[side] & mask).not_empty() {
             return Some(Piece::Rook);
         }
 
-        if (self.bishops[side] & mask) != 0 {
+        if (self.bishops[side] & mask).not_empty() {
             return Some(Piece::Bishop);
         }
 
-        if (self.knights[side] & mask) != 0 {
+        if (self.knights[side] & mask).not_empty() {
             return Some(Piece::Knight);
         }
 
-        if (self.pawns[side] & mask) != 0 {
+        if (self.pawns[side] & mask).not_empty() {
             return Some(Piece::Pawn);
         }
 
@@ -532,20 +532,20 @@ impl Board {
         self.hash
     }
 
-    fn check_side(&self, mask: u64) -> Side {
-        if (self.occupied[Side::White] & mask) != 0 {
+    fn check_side(&self, mask: Bitboard) -> Side {
+        if (self.occupied[Side::White] & mask).not_empty() {
             return Side::White;
         }
 
-        if (self.occupied[Side::Black] & mask) != 0 {
+        if (self.occupied[Side::Black] & mask).not_empty() {
             return Side::Black;
         }
 
         eprintln!("Board history:");
         for entry in &self.history {
-            eprintln!("* {}{}", idx_to_str(entry.from.trailing_zeros() as usize), idx_to_str(entry.to.trailing_zeros() as usize));
+            eprintln!("* {}{}", entry.from.peek(), entry.to.peek());
         }
-        panic!("Internal error: there should be something on {} ({:#066b})", idx_to_str(mask.trailing_zeros() as usize), mask);
+        panic!("Internal error: there should be something on {} ({:#066b})", mask.peek(), mask);
     }
 
     fn update_hash(&mut self) {
@@ -554,8 +554,8 @@ impl Board {
 
     pub fn make_move(&mut self, m: Move) {
         // println!("Making move {}{}", idx_to_str(m.get_from() as usize), idx_to_str(m.get_to() as usize));
-        let from_mask = 1u64 << m.get_from();
-        let to_mask = 1u64 << m.get_to();
+        let from_mask = Bitboard::from(m.get_from());
+        let to_mask = Bitboard::from(m.get_to());
 
         let side = self.check_side(from_mask);
         let opponent = !side;
@@ -605,7 +605,7 @@ impl Board {
             self.half_moves_clock += 1;
         }
 
-        if piece_type == Piece::Pawn && (to_mask & masks::LAST_RANK[side]) != 0 {
+        if piece_type == Piece::Pawn && (to_mask & masks::LAST_RANK[side]).not_empty() {
             piece_type = Piece::from(m.get_promotion());
             history_entry.promotion = true;
         }
@@ -617,12 +617,12 @@ impl Board {
             });
         }
 
-        self.en_passant = 0;
+        self.en_passant = Bitboard::EMPTY;
 
         if piece_type == Piece::Pawn
-            && from_mask & masks::SECOND_RANK[side] != 0
-            && to_mask & masks::EN_PASSANT_RANK[side] != 0
-            && (to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent] != 0
+            && (from_mask & masks::SECOND_RANK[side]).not_empty()
+            && (to_mask & masks::EN_PASSANT_RANK[side]).not_empty()
+            && ((to_mask << 1 | to_mask >> 1) & masks::EN_PASSANT_RANK[side] & self.pawns[opponent]).not_empty()
         {
             self.en_passant = match side {
                 Side::White => from_mask << 8,

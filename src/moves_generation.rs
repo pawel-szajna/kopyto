@@ -1,8 +1,6 @@
 use crate::board::Board;
 use crate::masks;
-use crate::types::{Move, Promotion, Side};
-#[cfg(test)]
-use crate::util;
+use crate::types::{Bitboard, Move, Promotion, Side, Square};
 use std::time::SystemTime;
 
 pub trait MoveGenerator: pimpl::MoveGenerator {
@@ -12,7 +10,7 @@ pub trait MoveGenerator: pimpl::MoveGenerator {
         self.generate_moves_impl(side, captures_only)
     }
 
-    fn generate_attacks(&mut self, side: Side) -> u64 {
+    fn generate_attacks(&mut self, side: Side) -> Bitboard {
         self.attack_mask(side)
     }
 
@@ -20,7 +18,7 @@ pub trait MoveGenerator: pimpl::MoveGenerator {
     fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move>;
     #[cfg(test)]
     fn generate_side_moves_for(&mut self, side: Side, file: usize, rank: usize) -> Vec<Move> {
-        self.generate_moves_for_impl(side, util::coords_to_mask(file, rank))
+        self.generate_moves_for_impl(side, Bitboard::from_coords(file, rank))
     }
 }
 
@@ -82,23 +80,23 @@ mod attacks {
     use crate::magics::Magics;
     use super::*;
 
-    pub fn pawn(side: Side, idx: usize) -> u64 {
+    pub fn pawn(side: Side, idx: Square) -> Bitboard {
         masks::PAWN_TARGETS[side][idx]
     }
 
-    pub fn knight(idx: usize) -> u64 {
+    pub fn knight(idx: Square) -> Bitboard {
         masks::KNIGHT_TARGETS[idx]
     }
 
-    pub fn bishop(idx: usize, occupied: u64, magics: &Magics) -> u64 {
-        magics.get(idx, occupied)
+    pub fn bishop(idx: Square, occupied: Bitboard, magics: &Magics) -> Bitboard {
+        Bitboard::from_u64(magics.get(idx as usize, occupied))
     }
 
-    pub fn rook(idx: usize, occupied: u64, magics: &Magics) -> u64 {
-        magics.get(idx, occupied)
+    pub fn rook(idx: Square, occupied: Bitboard, magics: &Magics) -> Bitboard {
+        Bitboard::from_u64(magics.get(idx as usize, occupied))
     }
 
-    pub fn king(idx: usize) -> u64 {
+    pub fn king(idx: Square) -> Bitboard {
         masks::KING_TARGETS[idx]
     }
 }
@@ -107,23 +105,16 @@ mod pimpl {
     use super::*;
     use crate::types::Piece;
 
-    fn generate_piece<F>(moves: &mut Vec<Move>, mut mask: u64, generator: F)
-    where
-        F: Fn(usize) -> u64,
+    fn generate_piece(moves: &mut Vec<Move>, mask: Bitboard, generator: impl Fn(Square) -> Bitboard)
     {
-        while mask != 0 {
-            let src_idx = mask.trailing_zeros() as usize;
-            let mut moves_mask = generator(src_idx);
-            while moves_mask != 0 {
-                let tgt_idx = moves_mask.trailing_zeros() as usize;
+        for src_idx in mask {
+            for tgt_idx in generator(src_idx) {
                 moves.push(Move::from_idx(src_idx, tgt_idx));
-                moves_mask &= moves_mask - 1;
             }
-            mask &= mask - 1;
         }
     }
 
-    fn push_pawns(side: Side, pawns: u64) -> u64 {
+    fn push_pawns(side: Side, pawns: Bitboard) -> Bitboard {
         match side {
             Side::White => pawns << 8,
             Side::Black => pawns >> 8,
@@ -134,28 +125,28 @@ mod pimpl {
         fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move>;
 
         #[cfg(test)]
-        fn generate_moves_for_impl(&mut self, side: Side, mask: u64) -> Vec<Move>;
+        fn generate_moves_for_impl(&mut self, side: Side, mask: Bitboard) -> Vec<Move>;
 
-        fn check_mask(&self, side: Side, king: u64) -> (u64, u64);
-        fn attack_mask(&self, side: Side) -> u64;
-        fn pin_mask(&self, side: Side, king_idx: usize, attacks: u64) -> u64;
-        fn parallel_pin_mask(&self, side: Side, king: u64) -> u64;
-        fn diagonal_pin_mask(&self, side: Side, king: u64) -> u64;
+        fn check_mask(&self, side: Side, king: Bitboard) -> (u64, Bitboard);
+        fn attack_mask(&self, side: Side) -> Bitboard;
+        fn pin_mask(&self, side: Side, king_idx: Square, attacks: Bitboard) -> Bitboard;
+        fn parallel_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard;
+        fn diagonal_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard;
 
         fn generate_pawns(
             &self,
             side: Side,
             moves: &mut Vec<Move>,
-            parallel_pin_mask: u64,
-            diagonal_pin_mask: u64,
-            check_mask: u64,
+            parallel_pin_mask: Bitboard,
+            diagonal_pin_mask: Bitboard,
+            check_mask: Bitboard,
             captures_only: bool,
         );
-        fn generate_knight(&self, knight_idx: usize) -> u64;
-        fn generate_king(&self, king_idx: usize, side: Side, legal_mask: u64) -> u64;
-        fn generate_rook(&self, rook_idx: usize, parallel_pin_mask: u64) -> u64;
-        fn generate_bishop(&self, bishop_idx: usize, diagonal_pin_mask: u64) -> u64;
-        fn generate_queen(&self, queen_idx: usize, parallel_pin_mask: u64, diagonal_pin_mask: u64) -> u64;
+        fn generate_knight(&self, knight_idx: Square) -> Bitboard;
+        fn generate_king(&self, king_idx: Square, side: Side, legal_mask: Bitboard) -> Bitboard;
+        fn generate_rook(&self, rook_idx: Square, parallel_pin_mask: Bitboard) -> Bitboard;
+        fn generate_bishop(&self, bishop_idx: Square, diagonal_pin_mask: Bitboard) -> Bitboard;
+        fn generate_queen(&self, queen_idx: Square, parallel_pin_mask: Bitboard, diagonal_pin_mask: Bitboard) -> Bitboard;
     }
 
     impl MoveGenerator for Board {
@@ -166,8 +157,8 @@ mod pimpl {
 
             let (check_count, check_mask) = self.check_mask(side, self.kings[side]);
 
-            let parallel_pin_mask = self.parallel_pin_mask(side, self.kings[side]);
-            let diagonal_pin_mask = self.diagonal_pin_mask(side, self.kings[side]);
+            let parallel_pin_mask = self.parallel_pin_mask(side, self.kings[side].peek());
+            let diagonal_pin_mask = self.diagonal_pin_mask(side, self.kings[side].peek());
 
             let mut legal_targets = match captures_only {
                 true => self.occupied[opponent],
@@ -201,128 +192,116 @@ mod pimpl {
         }
 
         #[cfg(test)]
-        fn generate_moves_for_impl(&mut self, side: Side, mask: u64) -> Vec<Move> {
+        fn generate_moves_for_impl(&mut self, side: Side, mask: Bitboard) -> Vec<Move> {
             let mut moves = self.generate_moves_impl(side, false);
-            moves.retain(|m| m.get_from() == mask.trailing_zeros() as u16);
+            moves.retain(|m| m.get_from() == mask.peek());
             moves
         }
 
-        fn check_mask(&self, side: Side, king: u64) -> (u64, u64) {
+        fn check_mask(&self, side: Side, king: Bitboard) -> (u64, Bitboard) {
             let opponent = !side;
-            assert_ne!(king, 0, "no king on board");
-            let king_idx = king.trailing_zeros() as usize;
+            assert!(king.not_empty(), "no king on board");
+            let king_idx = king.peek();
 
             let mut checks = 0;
-            let mut check_mask = 0;
+            let mut check_mask = Bitboard::EMPTY;
 
             let pawns = self.pawns[opponent] & attacks::pawn(side, king_idx);
-            if pawns != 0 {
+            if pawns.not_empty() {
                 checks += 1;
                 check_mask |= pawns;
             }
 
             let knights = self.knights[opponent] & attacks::knight(king_idx);
-            if knights != 0 {
+            if knights.not_empty() {
                 checks += 1;
                 check_mask |= knights;
             }
 
             let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece, &self.bishop_magics);
-            if bishops != 0 {
+            if bishops.not_empty() {
                 checks += 1;
-                let attacker_idx = bishops.trailing_zeros() as usize;
-                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | (1u64 << attacker_idx);
+                let attacker_idx = bishops.peek();
+                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
             }
 
             let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece, &self.rook_magics);
-            if rooks != 0 {
-                checks += rooks.count_ones() as u64;
-                let attacker_idx = rooks.trailing_zeros() as usize;
-                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | (1u64 << attacker_idx);
+            if rooks.not_empty() {
+                checks += rooks.count() as u64;
+                let attacker_idx = rooks.peek();
+                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
             }
 
-            if check_mask == 0 {
+            if check_mask.empty() {
                 check_mask = !check_mask;
             }
 
             (checks, check_mask)
         }
 
-        fn attack_mask(&self, side: Side) -> u64 {
+        fn attack_mask(&self, side: Side) -> Bitboard {
             let opponent = !side;
 
-            let king_idx = self.kings[opponent].trailing_zeros() as usize;
+            let king_idx = self.kings[opponent].peek();
             let king_attacks = attacks::king(king_idx);
 
-            if king_attacks & !self.occupied[opponent] == 0 {
+            if (king_attacks & !self.occupied[opponent]).empty() {
                 // king cannot move
-                return 0;
+                return Bitboard::EMPTY;
             }
 
-            let mut mask = 0;
+            let mut mask = Bitboard::EMPTY;
             let occupied = self.any_piece & !self.kings[opponent];
 
-            let mut pawns = self.pawns[side];
-            while pawns != 0 {
-                let pawn_idx = pawns.trailing_zeros() as usize;
+            let pawns = self.pawns[side];
+            for pawn_idx in pawns {
                 mask |= attacks::pawn(side, pawn_idx);
-                pawns &= pawns - 1;
             }
 
-            let mut knights = self.knights[side];
-            while knights != 0 {
-                let knight_idx = knights.trailing_zeros() as usize;
+            let knights = self.knights[side];
+            for knight_idx in knights {
                 mask |= attacks::knight(knight_idx);
-                knights &= knights - 1;
             }
 
-            let mut bishops = self.bishops[side] | self.queens[side];
-            while bishops != 0 {
-                let bishop_idx = bishops.trailing_zeros() as usize;
+            let bishops = self.bishops[side] | self.queens[side];
+            for bishop_idx in bishops {
                 mask |= attacks::bishop(bishop_idx, occupied, &self.bishop_magics);
-                bishops &= bishops - 1;
             }
 
-            let mut rooks = self.rooks[side] | self.queens[side];
-            while rooks != 0 {
-                let rook_idx = rooks.trailing_zeros() as usize;
+            let rooks = self.rooks[side] | self.queens[side];
+            for rook_idx in rooks {
                 mask |= attacks::rook(rook_idx, occupied, &self.rook_magics);
-                rooks &= rooks - 1;
             }
 
-            mask |= attacks::king(self.kings[side].trailing_zeros() as usize);
+            mask |= attacks::king(self.kings[side].peek());
 
             mask
         }
 
-        fn pin_mask(&self, side: Side, king_idx: usize, mut attacks: u64) -> u64 {
-            let mut result = 0;
+        fn pin_mask(&self, side: Side, king_idx: Square, attacks: Bitboard) -> Bitboard {
+            let mut result = Bitboard::EMPTY;
 
-            while attacks != 0 {
-                let pinner_idx = attacks.trailing_zeros() as usize;
-                let pinner = 1u64 << pinner_idx;
+            for pinner_idx in attacks {
+                let pinner = Bitboard::from(pinner_idx);
                 let ray = masks::BETWEEN[king_idx][pinner_idx] | pinner;
-                if (ray & self.occupied[side]).count_ones() == 1 {
+                if (ray & self.occupied[side]).pieces() == 1 {
                     result |= ray;
                 }
-                attacks ^= pinner;
             }
 
             result
         }
 
-        fn parallel_pin_mask(&self, side: Side, king: u64) -> u64 {
-            let king_idx = king.trailing_zeros() as usize;
+        fn parallel_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard {
             let opponent = !side;
+
             self.pin_mask(
                 side,
                 king_idx,
-                attacks::rook(king_idx, self.occupied[opponent], &self.rook_magics) & (self.rooks[opponent] | self.queens[opponent]),
-            )
+                attacks::rook(king_idx, self.occupied[opponent], &self.rook_magics) & (self.rooks[opponent] | self.queens[opponent]))
         }
 
-        fn diagonal_pin_mask(&self, side: Side, king: u64) -> u64 {
-            let king_idx = king.trailing_zeros() as usize;
+        fn diagonal_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard {
             let opponent = !side;
             self.pin_mask(
                 side,
@@ -335,9 +314,9 @@ mod pimpl {
             &self,
             side: Side,
             moves: &mut Vec<Move>,
-            parallel_pin_mask: u64,
-            diagonal_pin_mask: u64,
-            check_mask: u64,
+            parallel_pin_mask: Bitboard,
+            diagonal_pin_mask: Bitboard,
+            check_mask: Bitboard,
             captures_only: bool,
         ) {
             let opponent = !side;
@@ -383,42 +362,36 @@ mod pimpl {
 
             let pawns_double = (pawns_walk_unpinned | pawns_walk_pinned) & masks::RANKS_RELATIVE[2][side];
 
-            let mut pawns_double_walk = !self.any_piece & check_mask & push_pawns(side, pawns_double);
+            let pawns_double_walk = !self.any_piece & check_mask & push_pawns(side, pawns_double);
 
-            if pawns & masks::NEXT_TO_SECOND_RANK[side] != 0 {
-                let mut promotion_attacks_left = attacks_left & masks::LAST_RANK[side];
-                let mut promotion_attacks_right = attacks_right & masks::LAST_RANK[side];
-                let mut promotion_walk = pawns_walk & masks::LAST_RANK[side];
+            if (pawns & masks::NEXT_TO_SECOND_RANK[side]).not_empty() {
+                let promotion_attacks_left = attacks_left & masks::LAST_RANK[side];
+                let promotion_attacks_right = attacks_right & masks::LAST_RANK[side];
+                let promotion_walk = pawns_walk & masks::LAST_RANK[side];
 
-                while promotion_attacks_left != 0 {
-                    let tgt_idx = promotion_attacks_left.trailing_zeros() as usize;
-                    let src_idx = side.choose(tgt_idx - 7, tgt_idx + 7);
+                for tgt_idx in promotion_attacks_left {
+                    let src_idx = side.choose(tgt_idx.southeast(), tgt_idx.northwest());
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
-                    promotion_attacks_left &= promotion_attacks_left - 1;
                 }
 
-                while promotion_attacks_right != 0 {
-                    let tgt_idx = promotion_attacks_right.trailing_zeros() as usize;
-                    let src_idx = side.choose(tgt_idx - 9, tgt_idx + 9);
+                for tgt_idx in promotion_attacks_right {
+                    let src_idx = side.choose(tgt_idx.southwest(), tgt_idx.northeast());
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
                     moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
-                    promotion_attacks_right &= promotion_attacks_right - 1;
                 }
 
                 if !captures_only {
-                    while promotion_walk != 0 {
-                        let tgt_idx = promotion_walk.trailing_zeros() as usize;
-                        let src_idx = side.choose(tgt_idx - 8, tgt_idx + 8);
+                    for tgt_idx in promotion_walk {
+                        let src_idx = side.choose(tgt_idx.south(), tgt_idx.north());
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
                         moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
-                        promotion_walk &= promotion_walk - 1;
                     }
                 }
             }
@@ -427,60 +400,50 @@ mod pimpl {
             attacks_left &= !masks::LAST_RANK[side];
             attacks_right &= !masks::LAST_RANK[side];
 
-            while attacks_left != 0 {
-                let idx = attacks_left.trailing_zeros() as usize;
-                moves.push(Move::from_idx(side.choose(idx - 7, idx + 7), idx));
-                attacks_left &= attacks_left - 1;
+            for idx in attacks_left {
+                moves.push(Move::from_idx(side.choose(idx.southeast(), idx.northwest()), idx));
             }
 
-            while attacks_right != 0 {
-                let idx = attacks_right.trailing_zeros() as usize;
-                moves.push(Move::from_idx(side.choose(idx - 9, idx + 9), idx));
-                attacks_right &= attacks_right - 1;
+            for idx in attacks_right {
+                moves.push(Move::from_idx(side.choose(idx.southwest(), idx.northeast()), idx));
             }
 
             if !captures_only {
-                while pawns_walk != 0 {
-                    let idx = pawns_walk.trailing_zeros() as usize;
-                    moves.push(Move::from_idx(side.choose(idx - 8, idx + 8), idx));
-                    pawns_walk &= pawns_walk - 1;
+                for idx in pawns_walk {
+                    moves.push(Move::from_idx(side.choose(idx.south(), idx.north()), idx));
                 }
 
-                while pawns_double_walk != 0 {
-                    let idx = pawns_double_walk.trailing_zeros() as usize;
-                    moves.push(Move::from_idx(side.choose(idx - 16, idx + 16), idx));
-                    pawns_double_walk &= pawns_double_walk - 1;
+                for idx in pawns_double_walk {
+                    moves.push(Move::from_idx(side.choose(idx.south().south(), idx.north().north()), idx));
                 }
             }
 
-            if self.en_passant == 0 {
+            if self.en_passant.empty() {
                 return;
             }
 
             let target = self.en_passant;
-            let target_idx = target.trailing_zeros() as usize;
-            let enemy_pawn = side.choose(self.en_passant >> 8, self.en_passant << 8);
-            let enemy_pawn_idx = enemy_pawn.trailing_zeros() as usize;
+            let target_idx = target.peek();
+            let enemy_pawn = side.choose(target >> 8, target << 8);
+            let enemy_pawn_idx = enemy_pawn.peek();
 
-            if (enemy_pawn | target) & check_mask == 0 {
+            if ((enemy_pawn | target) & check_mask).empty() {
                 return;
             }
 
-            let mut en_passant_attackers = attacks::pawn(opponent, target_idx) & pawns_may_take;
+            let en_passant_attackers = attacks::pawn(opponent, target_idx) & pawns_may_take;
 
-            let king_mask = self.kings[side] & masks::RANKS[enemy_pawn_idx / 8];
+            let king_mask = self.kings[side] & masks::RANKS[enemy_pawn_idx.rank()];
             let rook_mask = self.rooks[opponent] | self.queens[opponent];
 
-            while en_passant_attackers != 0 {
-                let source_idx = en_passant_attackers.trailing_zeros() as usize;
-                let source = 1u64 << source_idx;
-                en_passant_attackers ^= source;
+            for source_idx in en_passant_attackers {
+                let source = Bitboard::from(source_idx);
 
-                if (source & diagonal_pin_mask) == 0 || (target & diagonal_pin_mask) != 0 {
-                    if king_mask != 0 && rook_mask != 0 {
+                if (source & diagonal_pin_mask).empty() || (target & diagonal_pin_mask).not_empty() {
+                    if king_mask.not_empty() && rook_mask.not_empty() {
                         let pawns_mask = enemy_pawn | source;
-                        let king_idx = self.kings[side].trailing_zeros() as usize;
-                        if attacks::rook(king_idx, self.any_piece & !pawns_mask, &self.rook_magics) & rook_mask != 0 {
+                        let king_idx = self.kings[side].peek();
+                        if (attacks::rook(king_idx, self.any_piece & !pawns_mask, &self.rook_magics) & rook_mask).not_empty() {
                             break;
                         }
                     }
@@ -490,19 +453,19 @@ mod pimpl {
             }
         }
 
-        fn generate_knight(&self, knight_idx: usize) -> u64 {
+        fn generate_knight(&self, knight_idx: Square) -> Bitboard {
             attacks::knight(knight_idx)
         }
 
-        fn generate_king(&self, king_idx: usize, side: Side, legal_mask: u64) -> u64 {
+        fn generate_king(&self, king_idx: Square, side: Side, legal_mask: Bitboard) -> Bitboard {
             let enemy_attacks = self.attack_mask(!side);
             let mut targets = attacks::king(king_idx) & legal_mask & !enemy_attacks;
 
             if self.castle_kingside[side]
                 && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
-                && masks::KING_STARTING_POSITION[side] & enemy_attacks == 0
-                && masks::CASTLE_KINGSIDE_BLOCKER[side] & !self.any_piece & !enemy_attacks != 0
-                && masks::CASTLE_KINGSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks != 0
+                && (masks::KING_STARTING_POSITION[side] & enemy_attacks).empty()
+                && (masks::CASTLE_KINGSIDE_BLOCKER[side] & !self.any_piece & !enemy_attacks).not_empty()
+                && (masks::CASTLE_KINGSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks).not_empty()
             {
                 targets |= masks::CASTLE_KINGSIDE[side];
             }
@@ -510,9 +473,9 @@ mod pimpl {
             if self.castle_queenside[side]
                 && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
                 && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
-                && masks::KING_STARTING_POSITION[side] & enemy_attacks == 0
-                && masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side] & !self.any_piece & !enemy_attacks != 0
-                && masks::CASTLE_QUEENSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks != 0
+                && (masks::KING_STARTING_POSITION[side] & enemy_attacks).empty()
+                && (masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side] & !self.any_piece & !enemy_attacks).not_empty()
+                && (masks::CASTLE_QUEENSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks).not_empty()
             {
                 targets |= masks::CASTLE_QUEENSIDE[side];
             }
@@ -520,24 +483,24 @@ mod pimpl {
             targets
         }
 
-        fn generate_rook(&self, rook_idx: usize, parallel_pin_mask: u64) -> u64 {
-            match parallel_pin_mask & (1u64 << rook_idx) != 0 {
+        fn generate_rook(&self, rook_idx: Square, parallel_pin_mask: Bitboard) -> Bitboard {
+            match (parallel_pin_mask & Bitboard::from(rook_idx)).not_empty() {
                 true => attacks::rook(rook_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
                 false => attacks::rook(rook_idx, self.any_piece, &self.rook_magics),
             }
         }
 
-        fn generate_bishop(&self, bishop_idx: usize, diagonal_pin_mask: u64) -> u64 {
-            match diagonal_pin_mask & (1u64 << bishop_idx) != 0 {
+        fn generate_bishop(&self, bishop_idx: Square, diagonal_pin_mask: Bitboard) -> Bitboard {
+            match (diagonal_pin_mask & Bitboard::from(bishop_idx)).not_empty() {
                 true => attacks::bishop(bishop_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
                 false => attacks::bishop(bishop_idx, self.any_piece, &self.bishop_magics),
             }
         }
 
-        fn generate_queen(&self, queen_idx: usize, parallel_pin_mask: u64, diagonal_pin_mask: u64) -> u64 {
-            match 1 << queen_idx {
-                mask if mask & diagonal_pin_mask != 0 => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
-                mask if mask & parallel_pin_mask != 0 => attacks::rook(queen_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
+        fn generate_queen(&self, queen_idx: Square, parallel_pin_mask: Bitboard, diagonal_pin_mask: Bitboard) -> Bitboard {
+            match Bitboard::from(queen_idx) {
+                mask if (mask & diagonal_pin_mask).not_empty() => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) & diagonal_pin_mask,
+                mask if (mask & parallel_pin_mask).not_empty() => attacks::rook(queen_idx, self.any_piece, &self.rook_magics) & parallel_pin_mask,
                 _ => attacks::bishop(queen_idx, self.any_piece, &self.bishop_magics) | attacks::rook(queen_idx, self.any_piece, &self.rook_magics),
             }
         }
@@ -565,9 +528,12 @@ mod tests {
     }
 
     fn piece_move_generation_test(fen: &str, file: usize, rank: usize, expected: Vec<Move>) {
-        println!("Move generation test at position {}", fen);
+        println!("---------- Move generation test at position {} ---------------", fen);
 
         let mut board = Board::from_fen(fen);
+
+        println!("{}", board.export_graph());
+
         let moves = board.generate_moves_for(file, rank);
 
         move_generation_comparison(moves, expected);

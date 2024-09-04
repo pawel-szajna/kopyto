@@ -1,5 +1,5 @@
 use crate::board::Board;
-use crate::types::Move;
+use crate::types::{Bitboard, Move};
 
 mod weights {
     type Weights = [i64; 64];
@@ -221,7 +221,7 @@ mod pimpl {
         fn order_moves(&self, moves: &Vec<Move>) -> Vec<i64>;
 
         fn eval(&self) -> i64;
-        fn eval_piece(&self, mask: u64, value: i64, weights: &[i64; 64]) -> i64;
+        fn eval_piece(&self, mask: Bitboard, value: i64, weights: &[i64; 64]) -> i64;
 
         fn bishop_pair(&self, side: Side) -> bool;
         fn insufficient_material(&self) -> bool;
@@ -413,14 +413,14 @@ mod pimpl {
             let mut pieces = [None; 64];
 
             for m in &*moves {
-                let source = m.get_from() as usize;
-                let target = m.get_to() as usize;
+                let source = m.get_from();
+                let target = m.get_to();
                 if !verified[source] {
-                    pieces[source] = self.check_piece(side, 1u64 << source);
+                    pieces[source] = self.check_piece(side, Bitboard::from(source));
                     verified[source] = true;
                 }
                 if !verified[target] {
-                    pieces[target] = self.check_piece(opponent, 1u64 << target);
+                    pieces[target] = self.check_piece(opponent, Bitboard::from(target));
                     verified[target] = true;
                 }
             }
@@ -429,8 +429,8 @@ mod pimpl {
                 match hash_move {
                     Some(hashed) if &hashed == m => 10000,
                     _ => {
-                        let target_mask = 1u64 << m.get_to();
-                        match target_mask & attacks != 0 {
+                        let target_mask = Bitboard::from(m.get_to());
+                        match (target_mask & attacks).not_empty() {
                             false => 0,
                             true => {
                                 let defender_value = piece_value(pieces[m.get_to() as usize]);
@@ -458,44 +458,39 @@ mod pimpl {
             score
         }
 
-        fn eval_piece(&self, mut mask: u64, value: i64, weights: &[i64; 64]) -> i64 {
+        fn eval_piece(&self, mask: Bitboard, value: i64, weights: &[i64; 64]) -> i64 {
             let mut score = 0;
-            while mask != 0 {
-                let pos = mask.trailing_zeros() as usize;
+            for pos in mask {
                 score += value + weights[pos];
-                mask &= mask - 1;
             }
             score
         }
 
         fn bishop_pair(&self, side: Side) -> bool {
-            let mut bishops = self.bishops[side];
+            let bishops = self.bishops[side];
             let mut lsb = 0;
             let mut dsb = 0;
-            while bishops != 0 {
-                let bishop = bishops.trailing_zeros();
-                if (bishop % 2) != ((bishop / 8) % 2) {
-                    lsb += 1;
-                } else {
-                    dsb += 1;
+            for bishop in bishops {
+                match bishop.is_white() {
+                    true => lsb += 1,
+                    false => dsb += 1,
                 }
-                bishops &= bishops - 1;
             }
             lsb > 0 && dsb > 0
         }
 
         fn insufficient_material(&self) -> bool {
             !(
-                self.queens[Side::White] != 0 ||
-                self.queens[Side::Black] != 0 ||
-                self.rooks[Side::White] != 0 ||
-                self.rooks[Side::Black] != 0 ||
-                self.pawns[Side::White] != 0 ||
-                self.pawns[Side::Black] != 0 ||
-                self.knights[Side::White].count_ones() > 3 ||
-                self.knights[Side::Black].count_ones() > 3 ||
-                (self.bishops[Side::White] != 0 && self.knights[Side::White] != 0) ||
-                (self.bishops[Side::Black] != 0 && self.bishops[Side::Black] != 0) ||
+                self.queens[Side::White].not_empty() ||
+                self.queens[Side::Black].not_empty() ||
+                self.rooks[Side::White].not_empty() ||
+                self.rooks[Side::Black].not_empty() ||
+                self.pawns[Side::White].not_empty() ||
+                self.pawns[Side::Black].not_empty() ||
+                self.knights[Side::White].pieces() > 3 ||
+                self.knights[Side::Black].pieces() > 3 ||
+                (self.bishops[Side::White].not_empty() && self.knights[Side::White].not_empty()) ||
+                (self.bishops[Side::Black].not_empty() && self.bishops[Side::Black].not_empty()) ||
                 self.bishop_pair(Side::White) ||
                 self.bishop_pair(Side::Black)
             )

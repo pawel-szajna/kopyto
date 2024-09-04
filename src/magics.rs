@@ -1,6 +1,7 @@
 // use std::time::SystemTime;
 // use rand::RngCore;
 use crate::masks;
+use crate::types::{Bitboard, Square};
 
 // There is some magics search code commented out
 // The best programming practices out there
@@ -145,7 +146,7 @@ struct Entry {
     shift: usize,
     offset: usize,
     magic: u64,
-    mask: u64,
+    mask: Bitboard,
 }
 
 impl Entry {
@@ -154,12 +155,12 @@ impl Entry {
             shift: 0,
             offset: 0,
             magic: 0,
-            mask: 0,
+            mask: Bitboard::EMPTY,
         }
     }
 
-    fn get_index(&self, occupied: u64) -> usize {
-        self.offset + (((self.mask & occupied) * self.magic) as usize >> (64 - self.shift))
+    fn get_index(&self, occupied: Bitboard) -> usize {
+        self.offset + (((self.mask & occupied).bitboard * self.magic) as usize >> (64 - self.shift))
     }
 }
 
@@ -176,23 +177,23 @@ impl Magics {
         }
     }
 
-    pub fn get(&self, idx: usize, occupied: u64) -> u64 {
+    pub fn get(&self, idx: usize, occupied: Bitboard) -> u64 {
         self.table[self.magic[idx].get_index(occupied)]
     }
 }
 
-fn slide(idx: usize, diff: isize, boundary: u64, occupied: u64) -> u64 {
-    let mut slider = 1u64 << idx;
-    let mut attacks = 0;
+fn slide(idx: Square, diff: isize, boundary: Bitboard, occupied: Bitboard) -> Bitboard {
+    let mut slider = Bitboard::from(idx);
+    let mut attacks = Bitboard::EMPTY;
 
-    while slider & boundary != 0 {
+    while (slider & boundary).not_empty() {
         if diff >= 0 {
-            slider = slider.checked_shl(diff as u32).unwrap_or(0);
+            slider <<= diff;
         } else {
-            slider = slider.checked_shr(-diff as u32).unwrap_or(0);
+            slider >>= -diff;
         }
         attacks |= slider;
-        if occupied & slider != 0 {
+        if (occupied & slider).not_empty() {
             break;
         }
     }
@@ -200,8 +201,8 @@ fn slide(idx: usize, diff: isize, boundary: u64, occupied: u64) -> u64 {
     attacks
 }
 
-pub fn bishop(idx: usize, occupied: u64) -> u64 {
-    let mut attacks = 0;
+pub fn bishop(idx: Square, occupied: Bitboard) -> Bitboard {
+    let mut attacks = Bitboard::EMPTY;
     attacks |= slide(idx, -7, !(masks::RANKS[0] | masks::FILES[7]), occupied);
     attacks |= slide(idx, -9, !(masks::RANKS[0] | masks::FILES[0]), occupied);
     attacks |= slide(idx, 7, !(masks::RANKS[7] | masks::FILES[0]), occupied);
@@ -209,8 +210,8 @@ pub fn bishop(idx: usize, occupied: u64) -> u64 {
     attacks
 }
 
-pub fn rook(idx: usize, occupied: u64) -> u64 {
-    let mut attacks = 0;
+pub fn rook(idx: Square, occupied: Bitboard) -> Bitboard {
+    let mut attacks = Bitboard::EMPTY;
     attacks |= slide(idx, -1, !masks::FILES[0], occupied);
     attacks |= slide(idx, 1, !masks::FILES[7], occupied);
     attacks |= slide(idx, 8, !masks::RANKS[7], occupied);
@@ -218,14 +219,14 @@ pub fn rook(idx: usize, occupied: u64) -> u64 {
     attacks
 }
 
-fn create_entry<F>(piece_idx: usize, magic: u64, shift: usize, entry: &mut Entry, generator: &F) -> Option<Vec<u64>>
-where F: Fn(usize, u64) -> u64 {
+fn create_entry<F>(piece_idx: Square, magic: u64, shift: usize, entry: &mut Entry, generator: &F) -> Option<Vec<u64>>
+where F: Fn(Square, Bitboard) -> Bitboard {
     let mut result = vec![];
 
-    let file = piece_idx % 8;
-    let rank = piece_idx / 8;
+    let file = piece_idx.file();
+    let rank = piece_idx.rank();
     let edges = ((masks::RANKS[0] | masks::RANKS[7]) & !masks::RANKS[rank]) | ((masks::FILES[0] | masks::FILES[7]) & !masks::FILES[file]);
-    let mask = generator(piece_idx, 0) & !edges;
+    let mask = generator(piece_idx, Bitboard::EMPTY) & !edges;
 
     let mut new_entry = Entry::new();
     new_entry.magic = magic;
@@ -234,23 +235,23 @@ where F: Fn(usize, u64) -> u64 {
 
     result.resize(1 << shift, 0);
 
-    let mut occupied = 0;
+    let mut occupied = Bitboard::EMPTY;
 
     loop {
         let idx = new_entry.get_index(occupied);
         let desired = generator(piece_idx, occupied);
 
         if result[idx] == 0 {
-            result[idx] = desired;
+            result[idx] = desired.bitboard;
         }
 
-        if result[idx] != desired {
+        if result[idx] != desired.bitboard {
             return None;
         }
 
-        occupied = (occupied - mask) & mask;
+        occupied = Bitboard::from_u64(occupied.bitboard - mask.bitboard) & mask;
 
-        if occupied == 0 {
+        if occupied.empty() {
             break;
         }
     }
@@ -260,7 +261,7 @@ where F: Fn(usize, u64) -> u64 {
 }
 
 fn create_entry_outer<F>(idx: usize, /*mut*/ shift: usize, magic: u64, entry: &mut Entry, table: &mut Vec<u64>, generator: &F)
-where F: Fn(usize, u64) -> u64 {
+where F: Fn(Square, Bitboard) -> Bitboard {
     // let start = SystemTime::now();
     // let mut last_report = 0;
     // let mut rng = rand::thread_rng();
@@ -288,7 +289,7 @@ where F: Fn(usize, u64) -> u64 {
     //     }
     // }
 
-    let best_attempt = create_entry(idx, magic, shift, entry, generator);
+    let best_attempt = create_entry(Square::from(idx), magic, shift, entry, generator);
 
     let mut best_attempt = best_attempt.unwrap();
     entry.offset = table.len();
@@ -296,7 +297,7 @@ where F: Fn(usize, u64) -> u64 {
 }
 
 fn create_magics<F>(/*kind: &str, shift: usize,*/ generator: &F, magics_source: &[(u64, usize); 64]) -> Magics
-where F: Fn(usize, u64) -> u64 {
+where F: Fn(Square, Bitboard) -> Bitboard {
     // let start = SystemTime::now();
     let mut result = Magics::new();
 

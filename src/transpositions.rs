@@ -1,6 +1,6 @@
 use rand::RngCore;
 use crate::board::Board;
-use crate::types::{Move, Side};
+use crate::types::{Bitboard, Move, Side};
 
 type SideKeys = [u64; 64];
 type PieceKeys = [SideKeys; 2];
@@ -102,20 +102,18 @@ impl Zobrist {
             key ^= self.key_black_to_move;
         }
 
-        if board.en_passant != 0 {
-            key ^= self.keys_en_passant[board.en_passant.trailing_zeros() as usize % 8];
+        if board.en_passant.not_empty() {
+            key ^= self.keys_en_passant[board.en_passant.peek().file()];
         }
 
         key
     }
 
-    fn key_piece(&self, mut mask: u64, keys: &[u64; 64]) -> u64 {
+    fn key_piece(&self, mask: Bitboard, keys: &[u64; 64]) -> u64 {
         let mut key = 0u64;
 
-        while mask != 0 {
-            let idx = mask.trailing_zeros() as usize;
+        for idx in mask {
             key ^= keys[idx];
-            mask &= mask - 1;
         }
 
         key

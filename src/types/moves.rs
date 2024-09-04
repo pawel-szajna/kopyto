@@ -1,5 +1,5 @@
 use crate::util;
-use crate::types::Piece;
+use crate::types::{Bitboard, Piece, Square};
 use std::fmt;
 
 #[repr(u16)]
@@ -88,23 +88,29 @@ impl Move {
         }
     }
 
-    pub fn from_idx(from: usize, to: usize) -> Self {
+    pub fn from_idx(from: Square, to: Square) -> Self {
         let mut m = Self::new();
         m.set_from(from);
         m.set_to(to);
         m
     }
 
-    #[allow(dead_code)]
-    pub fn from_mask(from: u64, to: u64) -> Self {
-        Self::from_idx(from.trailing_zeros() as usize, to.trailing_zeros() as usize)
+    pub fn from_idx_prom(from: Square, to: Square, promotion: Promotion) -> Self {
+        let mut m = Self::from_idx(from, to);
+        m.set_promotion(promotion);
+        m
     }
 
-    pub fn set_from(&mut self, from: usize) {
+    #[allow(dead_code)]
+    pub fn from_mask(from: Bitboard, to: Bitboard) -> Self {
+        Self::from_idx(from.peek(), to.peek())
+    }
+
+    pub fn set_from(&mut self, from: Square) {
         self.m |= (from as u16) & Self::MASK_FROM;
     }
 
-    pub fn set_to(&mut self, to: usize) {
+    pub fn set_to(&mut self, to: Square) {
         self.m |= ((to as u16) << 6) & Self::MASK_TO;
     }
 
@@ -112,12 +118,12 @@ impl Move {
         self.m |= (((promotion as u16) << 12) & Self::MASK_PROMOTION) | Self::MASK_HAS_PROMOTION;
     }
 
-    pub fn get_from(&self) -> u16 {
-        self.m & Self::MASK_FROM
+    pub fn get_from(&self) -> Square {
+        Square::from((self.m & Self::MASK_FROM) as usize)
     }
 
-    pub fn get_to(&self) -> u16 {
-        (self.m & Self::MASK_TO) >> 6
+    pub fn get_to(&self) -> Square {
+        Square::from(((self.m & Self::MASK_TO) >> 6) as usize)
     }
 
     pub fn get_promotion(&self) -> Promotion {
@@ -143,13 +149,5 @@ impl Move {
                 )
             }
         }
-    }
-}
-
-impl Move {
-    pub fn from_idx_prom(from: usize, to: usize, promotion: Promotion) -> Self {
-        let mut m = Self::from_idx(from, to);
-        m.set_promotion(promotion);
-        m
     }
 }
