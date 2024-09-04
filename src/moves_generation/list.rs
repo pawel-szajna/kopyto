@@ -1,8 +1,9 @@
+use crate::moves_generation::{Moves, Weights};
 use crate::types::Move;
 
 pub struct MoveList {
-    moves: Vec<Move>,
-    weights: Vec<i64>,
+    moves: Moves,
+    weights: Weights,
 }
 
 impl MoveList {

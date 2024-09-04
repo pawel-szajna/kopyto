@@ -1,7 +1,7 @@
 use crate::book::{Book, BookGenerator};
 use crate::transpositions::{Transpositions, Zobrist};
 use crate::masks;
-use crate::moves_generation::MoveGenerator;
+use crate::moves_generation;
 use crate::types::{Bitboard, Move, Piece, Side};
 
 pub type ColorBitboard = [Bitboard; 2];
@@ -226,7 +226,7 @@ impl Board {
         match self.attacks[side] {
             Some(value) => value,
             None => {
-                let attacks = self.generate_attacks(side);
+                let attacks = moves_generation::attack_mask(self, side);
                 self.attacks[side] = Some(attacks);
                 attacks
             }
@@ -245,13 +245,14 @@ impl Board {
     }
 
     #[allow(dead_code)]
-    pub fn in_checkmate(&mut self, side: Side) -> bool {
+    pub fn in_checkmate(&mut self) -> bool {
+        let side = self.side_to_move();
         match self.checkmate[side] {
             Some(value) => value,
             None => {
                 let is_in_checkmate = match self.in_check(side) {
                     false => false,
-                    true => self.generate_side_moves(side, false).is_empty(),
+                    true => moves_generation::generate_all(self).is_empty(),
                 };
                 self.checkmate[side] = Some(is_in_checkmate);
                 is_in_checkmate

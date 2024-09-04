@@ -1,509 +1,368 @@
 use crate::board::Board;
 use crate::masks;
-use crate::types::{Bitboard, Move, Promotion, Side, Square};
-use std::time::SystemTime;
+use crate::types::{Bitboard, Move, Piece, Promotion, Side, Square};
+use crate::moves_generation::attacks;
 
-pub trait MoveGenerator: pimpl::MoveGenerator {
-    fn generate_moves(&mut self, captures_only: bool) -> Vec<Move>;
+pub type Moves = Vec<Move>;
 
-    fn generate_side_moves(&mut self, side: Side, captures_only: bool) -> Vec<Move> {
-        self.generate_moves_impl(side, captures_only)
-    }
+const CAPTURES_ONLY: bool = true;
+const ALL_MOVES: bool = false;
 
-    fn generate_attacks(&mut self, side: Side) -> Bitboard {
-        self.attack_mask(side)
-    }
-
-    #[cfg(test)]
-    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move>;
-    #[cfg(test)]
-    fn generate_side_moves_for(&mut self, side: Side, file: usize, rank: usize) -> Vec<Move> {
-        self.generate_moves_for_impl(side, Bitboard::from_coords(file, rank))
-    }
+pub fn generate_all(board: &Board) -> Moves {
+    generate::<ALL_MOVES>(board)
 }
 
-impl MoveGenerator for Board {
-    fn generate_moves(&mut self, captures_only: bool) -> Vec<Move> {
-        self.generate_side_moves(self.side_to_move(), captures_only)
-    }
-
-    #[cfg(test)]
-    fn generate_moves_for(&mut self, file: usize, rank: usize) -> Vec<Move> {
-        self.generate_side_moves_for(self.side_to_move(), file, rank)
-    }
+pub fn generate_captures(board: &Board) -> Moves {
+    generate::<CAPTURES_ONLY>(board)
 }
 
-pub fn perft(board: &mut Board, depth: usize) -> u64 {
-    let start = SystemTime::now();
-    let nodes = perft_impl(board, depth, true);
-    let time_taken = start.elapsed().unwrap();
-    let nps = if time_taken.as_nanos() > 0 {
-        1000000000 * nodes as u128 / time_taken.as_nanos()
-    } else {
-        0
+fn generate<const MODE: bool>(board: &Board) -> Moves {
+    let side = board.side_to_move();
+    let opponent = !side;
+
+    let mut moves = Vec::with_capacity(64);
+
+    let (check_count, check_mask) = check_mask(board, side, board.kings[side]);
+
+    let parallel_pin_mask = parallel_pin_mask(board, side, board.kings[side].peek());
+    let diagonal_pin_mask = diagonal_pin_mask(board, side, board.kings[side].peek());
+
+    let mut legal_targets = match MODE {
+        CAPTURES_ONLY => board.occupied[opponent],
+        ALL_MOVES => !board.occupied[side],
     };
-    println!(
-        "depth {} nodes {} time {} nps {}",
-        depth,
-        nodes,
-        time_taken.as_millis(),
-        if nps != 0 {
-            format!("{}", nps)
-        } else {
-            String::from("?")
+
+    generate_piece(&mut moves, board.kings[side], |idx| generate_king(board, idx, side, legal_targets));
+
+    if check_count > 1 {
+        return moves;
+    }
+
+    legal_targets &= check_mask;
+
+    generate_pawns::<MODE>(board, side, &mut moves, parallel_pin_mask, diagonal_pin_mask, check_mask);
+
+    generate_piece(&mut moves, board.knights[side] & !(parallel_pin_mask | diagonal_pin_mask), |idx| {
+        generate_knight(idx) & legal_targets
+    });
+    generate_piece(&mut moves, board.bishops[side] & !parallel_pin_mask, |idx| {
+        generate_bishop(board, idx, diagonal_pin_mask) & legal_targets
+    });
+    generate_piece(&mut moves, board.rooks[side] & !diagonal_pin_mask, |idx| {
+        generate_rook(board, idx, parallel_pin_mask) & legal_targets
+    });
+    generate_piece(&mut moves, board.queens[side] & !(parallel_pin_mask & diagonal_pin_mask), |idx| {
+        generate_queen(board, idx, parallel_pin_mask, diagonal_pin_mask) & legal_targets
+    });
+
+    moves
+}
+
+fn generate_piece(moves: &mut Moves, mask: Bitboard, generator: impl Fn(Square) -> Bitboard)
+{
+    for src_idx in mask {
+        for tgt_idx in generator(src_idx) {
+            moves.push(Move::from_idx(src_idx, tgt_idx));
         }
-    );
-    nodes
+    }
 }
 
-fn perft_impl(board: &mut Board, depth: usize, init: bool) -> u64 {
-    if depth == 0 {
-        return 1;
+fn push_pawns(side: Side, pawns: Bitboard) -> Bitboard {
+    match side {
+        Side::White => pawns << 8,
+        Side::Black => pawns >> 8,
+    }
+}
+
+fn check_mask(board: &Board, side: Side, king: Bitboard) -> (u64, Bitboard) {
+    let opponent = !side;
+    assert!(king.not_empty(), "no king on board");
+    let king_idx = king.peek();
+
+    let mut checks = 0;
+    let mut check_mask = Bitboard::EMPTY;
+
+    let pawns = board.pawns[opponent] & attacks::pawn(side, king_idx);
+    if pawns.not_empty() {
+        checks += 1;
+        check_mask |= pawns;
     }
 
-    let mut nodes = 0;
-    let moves = board.generate_moves(false);
-    for m in moves {
-        board.make_move(m.clone());
-        let res = perft_impl(board, depth - 1, false);
-        if init {
-            println!("{:?}: {}", m, res);
+    let knights = board.knights[opponent] & attacks::knight(king_idx);
+    if knights.not_empty() {
+        checks += 1;
+        check_mask |= knights;
+    }
+
+    let bishops = (board.bishops[opponent] | board.queens[opponent]) & attacks::bishop(king_idx, board.any_piece);
+    if bishops.not_empty() {
+        checks += 1;
+        let attacker_idx = bishops.peek();
+        check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
+    }
+
+    let rooks = (board.rooks[opponent] | board.queens[opponent]) & attacks::rook(king_idx, board.any_piece);
+    if rooks.not_empty() {
+        checks += rooks.count() as u64;
+        let attacker_idx = rooks.peek();
+        check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
+    }
+
+    if check_mask.empty() {
+        check_mask = !check_mask;
+    }
+
+    (checks, check_mask)
+}
+
+pub fn attack_mask(board: &Board, side: Side) -> Bitboard {
+    let opponent = !side;
+
+    let king_idx = board.kings[opponent].peek();
+    let king_attacks = attacks::king(king_idx);
+
+    if (king_attacks & !board.occupied[opponent]).empty() {
+        // king cannot move
+        return Bitboard::EMPTY;
+    }
+
+    let mut mask = Bitboard::EMPTY;
+    let occupied = board.any_piece & !board.kings[opponent];
+
+    let pawns = board.pawns[side];
+    for pawn_idx in pawns {
+        mask |= attacks::pawn(side, pawn_idx);
+    }
+
+    let knights = board.knights[side];
+    for knight_idx in knights {
+        mask |= attacks::knight(knight_idx);
+    }
+
+    let bishops = board.bishops[side] | board.queens[side];
+    for bishop_idx in bishops {
+        mask |= attacks::bishop(bishop_idx, occupied);
+    }
+
+    let rooks = board.rooks[side] | board.queens[side];
+    for rook_idx in rooks {
+        mask |= attacks::rook(rook_idx, occupied);
+    }
+
+    mask |= attacks::king(board.kings[side].peek());
+
+    mask
+}
+
+fn pin_mask(board: &Board, side: Side, king_idx: Square, attacks: Bitboard) -> Bitboard {
+    let mut result = Bitboard::EMPTY;
+
+    for pinner_idx in attacks {
+        let pinner = Bitboard::from(pinner_idx);
+        let ray = masks::BETWEEN[king_idx][pinner_idx] | pinner;
+        if (ray & board.occupied[side]).pieces() == 1 {
+            result |= ray;
         }
-        nodes += res;
-        board.unmake_move();
     }
 
-    nodes
+    result
 }
 
-mod attacks {
-    use super::*;
-    use crate::board::magics;
+fn parallel_pin_mask(board: &Board, side: Side, king_idx: Square) -> Bitboard {
+    let opponent = !side;
+    pin_mask(
+        board,
+        side,
+        king_idx,
+        attacks::rook(king_idx, board.occupied[opponent]) & (board.rooks[opponent] | board.queens[opponent]))
+}
 
-    pub fn pawn(side: Side, idx: Square) -> Bitboard {
-        masks::PAWN_TARGETS[side][idx]
+fn diagonal_pin_mask(board: &Board, side: Side, king_idx: Square) -> Bitboard {
+    let opponent = !side;
+    pin_mask(
+        board,
+        side,
+        king_idx,
+        attacks::bishop(king_idx, board.occupied[opponent]) & (board.bishops[opponent] | board.queens[opponent]),
+    )
+}
+
+fn generate_pawns<const CAPTURES_ONLY: bool>(
+    board: &Board, side: Side, moves: &mut Moves, parallel_pins: Bitboard, diagonal_pins: Bitboard, check_mask: Bitboard
+) {
+    let opponent = !side;
+
+    let pawns = board.pawns[side];
+
+    let pawns_may_take = pawns & !parallel_pins;
+    let pawns_may_take_unpinned = pawns_may_take & !diagonal_pins;
+    let pawns_may_take_pinned = pawns_may_take & diagonal_pins;
+
+    let mut attacks_left = check_mask & board.occupied[opponent] & match side {
+        Side::White => ((pawns_may_take_unpinned << 7) & !masks::FILES[7])
+                     | ((pawns_may_take_pinned << 7) & !masks::FILES[7] & diagonal_pins),
+        Side::Black => ((pawns_may_take_unpinned >> 7) & !masks::FILES[0])
+                     | ((pawns_may_take_pinned >> 7) & !masks::FILES[0] & diagonal_pins),
+    };
+
+    let mut attacks_right = check_mask & board.occupied[opponent] & match side {
+        Side::White => ((pawns_may_take_unpinned << 9) & !masks::FILES[0])
+                     | ((pawns_may_take_pinned << 9) & !masks::FILES[0] & diagonal_pins),
+        Side::Black => ((pawns_may_take_unpinned >> 9) & !masks::FILES[7])
+                     | ((pawns_may_take_pinned >> 9) & !masks::FILES[7] & diagonal_pins),
+    };
+
+    let pawns_may_walk = pawns & !diagonal_pins;
+    let pawns_may_walk_pinned = pawns_may_walk & parallel_pins;
+    let pawns_may_walk_unpinned = pawns_may_walk & !parallel_pins;
+
+    let pawns_walk_unpinned = !board.any_piece & push_pawns(side, pawns_may_walk_unpinned);
+    let pawns_walk_pinned = !board.any_piece & parallel_pins & push_pawns(side, pawns_may_walk_pinned);
+
+    let mut pawns_walk = (pawns_walk_unpinned | pawns_walk_pinned) & check_mask;
+
+    let pawns_double = (pawns_walk_unpinned | pawns_walk_pinned) & masks::RANKS_RELATIVE[2][side];
+
+    let pawns_double_walk = !board.any_piece & check_mask & push_pawns(side, pawns_double);
+
+    if (pawns & masks::NEXT_TO_SECOND_RANK[side]).not_empty() {
+        let promotion_attacks_left = attacks_left & masks::LAST_RANK[side];
+        let promotion_attacks_right = attacks_right & masks::LAST_RANK[side];
+        let promotion_walk = pawns_walk & masks::LAST_RANK[side];
+
+        for tgt_idx in promotion_attacks_left {
+            let src_idx = side.choose(tgt_idx.southeast(), tgt_idx.northwest());
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
+        }
+
+        for tgt_idx in promotion_attacks_right {
+            let src_idx = side.choose(tgt_idx.southwest(), tgt_idx.northeast());
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
+            moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
+        }
+
+        if !CAPTURES_ONLY {
+            for tgt_idx in promotion_walk {
+                let src_idx = side.choose(tgt_idx.south(), tgt_idx.north());
+                moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
+                moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
+                moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
+                moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
+            }
+        }
     }
 
-    pub fn knight(idx: Square) -> Bitboard {
-        masks::KNIGHT_TARGETS[idx]
+    pawns_walk &= !masks::LAST_RANK[side];
+    attacks_left &= !masks::LAST_RANK[side];
+    attacks_right &= !masks::LAST_RANK[side];
+
+    for idx in attacks_left {
+        moves.push(Move::from_idx(side.choose(idx.southeast(), idx.northwest()), idx));
     }
 
-    pub fn bishop(idx: Square, occupied: Bitboard) -> Bitboard {
-        Bitboard::from_u64(magics::BISHOP_MAGICS.get(idx as usize, occupied))
+    for idx in attacks_right {
+        moves.push(Move::from_idx(side.choose(idx.southwest(), idx.northeast()), idx));
     }
 
-    pub fn rook(idx: Square, occupied: Bitboard) -> Bitboard {
-        Bitboard::from_u64(magics::ROOK_MAGICS.get(idx as usize, occupied))
+    if !CAPTURES_ONLY {
+        for idx in pawns_walk {
+            moves.push(Move::from_idx(side.choose(idx.south(), idx.north()), idx));
+        }
+
+        for idx in pawns_double_walk {
+            moves.push(Move::from_idx(side.choose(idx.south().south(), idx.north().north()), idx));
+        }
     }
 
-    pub fn king(idx: Square) -> Bitboard {
-        masks::KING_TARGETS[idx]
+    if board.en_passant.empty() {
+        return;
+    }
+
+    let target = board.en_passant;
+    let target_idx = target.peek();
+    let enemy_pawn = side.choose(target >> 8, target << 8);
+    let enemy_pawn_idx = enemy_pawn.peek();
+
+    if ((enemy_pawn | target) & check_mask).empty() {
+        return;
+    }
+
+    let en_passant_attackers = attacks::pawn(opponent, target_idx) & pawns_may_take;
+
+    let king_mask = board.kings[side] & masks::RANKS[enemy_pawn_idx.rank()];
+    let rook_mask = board.rooks[opponent] | board.queens[opponent];
+
+    for source_idx in en_passant_attackers {
+        let source = Bitboard::from(source_idx);
+
+        if (source & diagonal_pins).empty() || (target & diagonal_pins).not_empty() {
+            if king_mask.not_empty() && rook_mask.not_empty() {
+                let pawns_mask = enemy_pawn | source;
+                let king_idx = board.kings[side].peek();
+                if (attacks::rook(king_idx, board.any_piece & !pawns_mask) & rook_mask).not_empty() {
+                    break;
+                }
+            }
+
+            moves.push(Move::from_idx(source_idx, target_idx));
+        }
     }
 }
 
-mod pimpl {
-    use super::*;
-    use crate::types::Piece;
+fn generate_knight(knight_idx: Square) -> Bitboard {
+    attacks::knight(knight_idx)
+}
 
-    fn generate_piece(moves: &mut Vec<Move>, mask: Bitboard, generator: impl Fn(Square) -> Bitboard)
+fn generate_king(board: &Board, king_idx: Square, side: Side, legal_mask: Bitboard) -> Bitboard {
+    let enemy_attacks = attack_mask(board, !side);
+    let mut targets = attacks::king(king_idx) & legal_mask & !enemy_attacks;
+
+    if board.castle_kingside[side]
+        && board.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
+        && (masks::KING_STARTING_POSITION[side] & enemy_attacks).empty()
+        && (masks::CASTLE_KINGSIDE_BLOCKER[side] & !board.any_piece & !enemy_attacks).not_empty()
+        && (masks::CASTLE_KINGSIDE[side] & legal_mask & !board.any_piece & !enemy_attacks).not_empty()
     {
-        for src_idx in mask {
-            for tgt_idx in generator(src_idx) {
-                moves.push(Move::from_idx(src_idx, tgt_idx));
-            }
-        }
+        targets |= masks::CASTLE_KINGSIDE[side];
     }
 
-    fn push_pawns(side: Side, pawns: Bitboard) -> Bitboard {
-        match side {
-            Side::White => pawns << 8,
-            Side::Black => pawns >> 8,
-        }
+    if board.castle_queenside[side]
+        && !board.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
+        && board.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
+        && (masks::KING_STARTING_POSITION[side] & enemy_attacks).empty()
+        && (masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side] & !board.any_piece & !enemy_attacks).not_empty()
+        && (masks::CASTLE_QUEENSIDE[side] & legal_mask & !board.any_piece & !enemy_attacks).not_empty()
+    {
+        targets |= masks::CASTLE_QUEENSIDE[side];
     }
 
-    pub trait MoveGenerator {
-        fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move>;
+    targets
+}
 
-        #[cfg(test)]
-        fn generate_moves_for_impl(&mut self, side: Side, mask: Bitboard) -> Vec<Move>;
-
-        fn check_mask(&self, side: Side, king: Bitboard) -> (u64, Bitboard);
-        fn attack_mask(&self, side: Side) -> Bitboard;
-        fn pin_mask(&self, side: Side, king_idx: Square, attacks: Bitboard) -> Bitboard;
-        fn parallel_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard;
-        fn diagonal_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard;
-
-        fn generate_pawns(
-            &self,
-            side: Side,
-            moves: &mut Vec<Move>,
-            parallel_pin_mask: Bitboard,
-            diagonal_pin_mask: Bitboard,
-            check_mask: Bitboard,
-            captures_only: bool,
-        );
-        fn generate_knight(&self, knight_idx: Square) -> Bitboard;
-        fn generate_king(&self, king_idx: Square, side: Side, legal_mask: Bitboard) -> Bitboard;
-        fn generate_rook(&self, rook_idx: Square, parallel_pin_mask: Bitboard) -> Bitboard;
-        fn generate_bishop(&self, bishop_idx: Square, diagonal_pin_mask: Bitboard) -> Bitboard;
-        fn generate_queen(&self, queen_idx: Square, parallel_pin_mask: Bitboard, diagonal_pin_mask: Bitboard) -> Bitboard;
+fn generate_rook(board: &Board, rook_idx: Square, parallel_pins: Bitboard) -> Bitboard {
+    match (parallel_pins & Bitboard::from(rook_idx)).not_empty() {
+        true => attacks::rook(rook_idx, board.any_piece) & parallel_pins,
+        false => attacks::rook(rook_idx, board.any_piece),
     }
-
-    impl MoveGenerator for Board {
-        fn generate_moves_impl(&mut self, side: Side, captures_only: bool) -> Vec<Move> {
-            let opponent = !side;
-
-            let mut moves = Vec::with_capacity(64);
-
-            let (check_count, check_mask) = self.check_mask(side, self.kings[side]);
-
-            let parallel_pin_mask = self.parallel_pin_mask(side, self.kings[side].peek());
-            let diagonal_pin_mask = self.diagonal_pin_mask(side, self.kings[side].peek());
-
-            let mut legal_targets = match captures_only {
-                true => self.occupied[opponent],
-                false => !self.occupied[side],
-            };
-
-            generate_piece(&mut moves, self.kings[side], |idx| self.generate_king(idx, side, legal_targets));
-
-            if check_count > 1 {
-                return moves;
-            }
-
-            legal_targets &= check_mask;
-
-            self.generate_pawns(side, &mut moves, parallel_pin_mask, diagonal_pin_mask, check_mask, captures_only);
-
-            generate_piece(&mut moves, self.knights[side] & !(parallel_pin_mask | diagonal_pin_mask), |idx| {
-                self.generate_knight(idx) & legal_targets
-            });
-            generate_piece(&mut moves, self.bishops[side] & !parallel_pin_mask, |idx| {
-                self.generate_bishop(idx, diagonal_pin_mask) & legal_targets
-            });
-            generate_piece(&mut moves, self.rooks[side] & !diagonal_pin_mask, |idx| {
-                self.generate_rook(idx, parallel_pin_mask) & legal_targets
-            });
-            generate_piece(&mut moves, self.queens[side] & !(parallel_pin_mask & diagonal_pin_mask), |idx| {
-                self.generate_queen(idx, parallel_pin_mask, diagonal_pin_mask) & legal_targets
-            });
-
-            moves
-        }
-
-        #[cfg(test)]
-        fn generate_moves_for_impl(&mut self, side: Side, mask: Bitboard) -> Vec<Move> {
-            let mut moves = self.generate_moves_impl(side, false);
-            moves.retain(|m| m.get_from() == mask.peek());
-            moves
-        }
-
-        fn check_mask(&self, side: Side, king: Bitboard) -> (u64, Bitboard) {
-            let opponent = !side;
-            assert!(king.not_empty(), "no king on board");
-            let king_idx = king.peek();
-
-            let mut checks = 0;
-            let mut check_mask = Bitboard::EMPTY;
-
-            let pawns = self.pawns[opponent] & attacks::pawn(side, king_idx);
-            if pawns.not_empty() {
-                checks += 1;
-                check_mask |= pawns;
-            }
-
-            let knights = self.knights[opponent] & attacks::knight(king_idx);
-            if knights.not_empty() {
-                checks += 1;
-                check_mask |= knights;
-            }
-
-            let bishops = (self.bishops[opponent] | self.queens[opponent]) & attacks::bishop(king_idx, self.any_piece);
-            if bishops.not_empty() {
-                checks += 1;
-                let attacker_idx = bishops.peek();
-                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
-            }
-
-            let rooks = (self.rooks[opponent] | self.queens[opponent]) & attacks::rook(king_idx, self.any_piece);
-            if rooks.not_empty() {
-                checks += rooks.count() as u64;
-                let attacker_idx = rooks.peek();
-                check_mask |= masks::BETWEEN[king_idx][attacker_idx] | Bitboard::from(attacker_idx);
-            }
-
-            if check_mask.empty() {
-                check_mask = !check_mask;
-            }
-
-            (checks, check_mask)
-        }
-
-        fn attack_mask(&self, side: Side) -> Bitboard {
-            let opponent = !side;
-
-            let king_idx = self.kings[opponent].peek();
-            let king_attacks = attacks::king(king_idx);
-
-            if (king_attacks & !self.occupied[opponent]).empty() {
-                // king cannot move
-                return Bitboard::EMPTY;
-            }
-
-            let mut mask = Bitboard::EMPTY;
-            let occupied = self.any_piece & !self.kings[opponent];
-
-            let pawns = self.pawns[side];
-            for pawn_idx in pawns {
-                mask |= attacks::pawn(side, pawn_idx);
-            }
-
-            let knights = self.knights[side];
-            for knight_idx in knights {
-                mask |= attacks::knight(knight_idx);
-            }
-
-            let bishops = self.bishops[side] | self.queens[side];
-            for bishop_idx in bishops {
-                mask |= attacks::bishop(bishop_idx, occupied);
-            }
-
-            let rooks = self.rooks[side] | self.queens[side];
-            for rook_idx in rooks {
-                mask |= attacks::rook(rook_idx, occupied);
-            }
-
-            mask |= attacks::king(self.kings[side].peek());
-
-            mask
-        }
-
-        fn pin_mask(&self, side: Side, king_idx: Square, attacks: Bitboard) -> Bitboard {
-            let mut result = Bitboard::EMPTY;
-
-            for pinner_idx in attacks {
-                let pinner = Bitboard::from(pinner_idx);
-                let ray = masks::BETWEEN[king_idx][pinner_idx] | pinner;
-                if (ray & self.occupied[side]).pieces() == 1 {
-                    result |= ray;
-                }
-            }
-
-            result
-        }
-
-        fn parallel_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard {
-            let opponent = !side;
-
-            self.pin_mask(
-                side,
-                king_idx,
-                attacks::rook(king_idx, self.occupied[opponent]) & (self.rooks[opponent] | self.queens[opponent]))
-        }
-
-        fn diagonal_pin_mask(&self, side: Side, king_idx: Square) -> Bitboard {
-            let opponent = !side;
-            self.pin_mask(
-                side,
-                king_idx,
-                attacks::bishop(king_idx, self.occupied[opponent]) & (self.bishops[opponent] | self.queens[opponent]),
-            )
-        }
-
-        fn generate_pawns(
-            &self,
-            side: Side,
-            moves: &mut Vec<Move>,
-            parallel_pin_mask: Bitboard,
-            diagonal_pin_mask: Bitboard,
-            check_mask: Bitboard,
-            captures_only: bool,
-        ) {
-            let opponent = !side;
-
-            let pawns = self.pawns[side];
-
-            let pawns_may_take = pawns & !parallel_pin_mask;
-            let pawns_may_take_unpinned = pawns_may_take & !diagonal_pin_mask;
-            let pawns_may_take_pinned = pawns_may_take & diagonal_pin_mask;
-
-            let mut attacks_left = match side {
-                Side::White => {
-                    ((pawns_may_take_unpinned << 7) & !masks::FILES[7])
-                        | ((pawns_may_take_pinned << 7) & !masks::FILES[7] & diagonal_pin_mask)
-                },
-                Side::Black => {
-                    ((pawns_may_take_unpinned >> 7) & !masks::FILES[0])
-                        | ((pawns_may_take_pinned >> 7) & !masks::FILES[0] & diagonal_pin_mask)
-                },
-            } & check_mask
-                & self.occupied[opponent];
-
-            let mut attacks_right = match side {
-                Side::White => {
-                    ((pawns_may_take_unpinned << 9) & !masks::FILES[0])
-                        | ((pawns_may_take_pinned << 9) & !masks::FILES[0] & diagonal_pin_mask)
-                },
-                Side::Black => {
-                    ((pawns_may_take_unpinned >> 9) & !masks::FILES[7])
-                        | ((pawns_may_take_pinned >> 9) & !masks::FILES[7] & diagonal_pin_mask)
-                },
-            } & check_mask
-                & self.occupied[opponent];
-
-            let pawns_may_walk = pawns & !diagonal_pin_mask;
-            let pawns_may_walk_pinned = pawns_may_walk & parallel_pin_mask;
-            let pawns_may_walk_unpinned = pawns_may_walk & !parallel_pin_mask;
-
-            let pawns_walk_unpinned = !self.any_piece & push_pawns(side, pawns_may_walk_unpinned);
-            let pawns_walk_pinned = !self.any_piece & parallel_pin_mask & push_pawns(side, pawns_may_walk_pinned);
-
-            let mut pawns_walk = (pawns_walk_unpinned | pawns_walk_pinned) & check_mask;
-
-            let pawns_double = (pawns_walk_unpinned | pawns_walk_pinned) & masks::RANKS_RELATIVE[2][side];
-
-            let pawns_double_walk = !self.any_piece & check_mask & push_pawns(side, pawns_double);
-
-            if (pawns & masks::NEXT_TO_SECOND_RANK[side]).not_empty() {
-                let promotion_attacks_left = attacks_left & masks::LAST_RANK[side];
-                let promotion_attacks_right = attacks_right & masks::LAST_RANK[side];
-                let promotion_walk = pawns_walk & masks::LAST_RANK[side];
-
-                for tgt_idx in promotion_attacks_left {
-                    let src_idx = side.choose(tgt_idx.southeast(), tgt_idx.northwest());
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
-                }
-
-                for tgt_idx in promotion_attacks_right {
-                    let src_idx = side.choose(tgt_idx.southwest(), tgt_idx.northeast());
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
-                    moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
-                }
-
-                if !captures_only {
-                    for tgt_idx in promotion_walk {
-                        let src_idx = side.choose(tgt_idx.south(), tgt_idx.north());
-                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Knight));
-                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Bishop));
-                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Rook));
-                        moves.push(Move::from_idx_prom(src_idx, tgt_idx, Promotion::Queen));
-                    }
-                }
-            }
-
-            pawns_walk &= !masks::LAST_RANK[side];
-            attacks_left &= !masks::LAST_RANK[side];
-            attacks_right &= !masks::LAST_RANK[side];
-
-            for idx in attacks_left {
-                moves.push(Move::from_idx(side.choose(idx.southeast(), idx.northwest()), idx));
-            }
-
-            for idx in attacks_right {
-                moves.push(Move::from_idx(side.choose(idx.southwest(), idx.northeast()), idx));
-            }
-
-            if !captures_only {
-                for idx in pawns_walk {
-                    moves.push(Move::from_idx(side.choose(idx.south(), idx.north()), idx));
-                }
-
-                for idx in pawns_double_walk {
-                    moves.push(Move::from_idx(side.choose(idx.south().south(), idx.north().north()), idx));
-                }
-            }
-
-            if self.en_passant.empty() {
-                return;
-            }
-
-            let target = self.en_passant;
-            let target_idx = target.peek();
-            let enemy_pawn = side.choose(target >> 8, target << 8);
-            let enemy_pawn_idx = enemy_pawn.peek();
-
-            if ((enemy_pawn | target) & check_mask).empty() {
-                return;
-            }
-
-            let en_passant_attackers = attacks::pawn(opponent, target_idx) & pawns_may_take;
-
-            let king_mask = self.kings[side] & masks::RANKS[enemy_pawn_idx.rank()];
-            let rook_mask = self.rooks[opponent] | self.queens[opponent];
-
-            for source_idx in en_passant_attackers {
-                let source = Bitboard::from(source_idx);
-
-                if (source & diagonal_pin_mask).empty() || (target & diagonal_pin_mask).not_empty() {
-                    if king_mask.not_empty() && rook_mask.not_empty() {
-                        let pawns_mask = enemy_pawn | source;
-                        let king_idx = self.kings[side].peek();
-                        if (attacks::rook(king_idx, self.any_piece & !pawns_mask) & rook_mask).not_empty() {
-                            break;
-                        }
-                    }
-
-                    moves.push(Move::from_idx(source_idx, target_idx));
-                }
-            }
-        }
-
-        fn generate_knight(&self, knight_idx: Square) -> Bitboard {
-            attacks::knight(knight_idx)
-        }
-
-        fn generate_king(&self, king_idx: Square, side: Side, legal_mask: Bitboard) -> Bitboard {
-            let enemy_attacks = self.attack_mask(!side);
-            let mut targets = attacks::king(king_idx) & legal_mask & !enemy_attacks;
-
-            if self.castle_kingside[side]
-                && self.check_piece(side, masks::ROOK_KINGSIDE[side]) == Some(Piece::Rook)
-                && (masks::KING_STARTING_POSITION[side] & enemy_attacks).empty()
-                && (masks::CASTLE_KINGSIDE_BLOCKER[side] & !self.any_piece & !enemy_attacks).not_empty()
-                && (masks::CASTLE_KINGSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks).not_empty()
-            {
-                targets |= masks::CASTLE_KINGSIDE[side];
-            }
-
-            if self.castle_queenside[side]
-                && !self.has_piece(masks::CASTLE_QUEENSIDE_BLOCKER_KNIGHT[side])
-                && self.check_piece(side, masks::ROOK_QUEENSIDE[side]) == Some(Piece::Rook)
-                && (masks::KING_STARTING_POSITION[side] & enemy_attacks).empty()
-                && (masks::CASTLE_QUEENSIDE_BLOCKER_QUEEN[side] & !self.any_piece & !enemy_attacks).not_empty()
-                && (masks::CASTLE_QUEENSIDE[side] & legal_mask & !self.any_piece & !enemy_attacks).not_empty()
-            {
-                targets |= masks::CASTLE_QUEENSIDE[side];
-            }
-
-            targets
-        }
-
-        fn generate_rook(&self, rook_idx: Square, parallel_pin_mask: Bitboard) -> Bitboard {
-            match (parallel_pin_mask & Bitboard::from(rook_idx)).not_empty() {
-                true => attacks::rook(rook_idx, self.any_piece) & parallel_pin_mask,
-                false => attacks::rook(rook_idx, self.any_piece),
-            }
-        }
-
-        fn generate_bishop(&self, bishop_idx: Square, diagonal_pin_mask: Bitboard) -> Bitboard {
-            match (diagonal_pin_mask & Bitboard::from(bishop_idx)).not_empty() {
-                true => attacks::bishop(bishop_idx, self.any_piece) & diagonal_pin_mask,
-                false => attacks::bishop(bishop_idx, self.any_piece),
-            }
-        }
-
-        fn generate_queen(&self, queen_idx: Square, parallel_pin_mask: Bitboard, diagonal_pin_mask: Bitboard) -> Bitboard {
-            match Bitboard::from(queen_idx) {
-                mask if (mask & diagonal_pin_mask).not_empty() => attacks::bishop(queen_idx, self.any_piece) & diagonal_pin_mask,
-                mask if (mask & parallel_pin_mask).not_empty() => attacks::rook(queen_idx, self.any_piece) & parallel_pin_mask,
-                _ => attacks::bishop(queen_idx, self.any_piece) | attacks::rook(queen_idx, self.any_piece),
-            }
-        }
+}
+
+fn generate_bishop(board: &Board, bishop_idx: Square, diagonal_pin_mask: Bitboard) -> Bitboard {
+    match (diagonal_pin_mask & Bitboard::from(bishop_idx)).not_empty() {
+        true => attacks::bishop(bishop_idx, board.any_piece) & diagonal_pin_mask,
+        false => attacks::bishop(bishop_idx, board.any_piece),
+    }
+}
+
+fn generate_queen(board: &Board, queen_idx: Square, parallel_pin_mask: Bitboard, diagonal_pin_mask: Bitboard) -> Bitboard {
+    match Bitboard::from(queen_idx) {
+        mask if (mask & diagonal_pin_mask).not_empty() => attacks::bishop(queen_idx, board.any_piece) & diagonal_pin_mask,
+        mask if (mask & parallel_pin_mask).not_empty() => attacks::rook(queen_idx, board.any_piece) & parallel_pin_mask,
+        _ => attacks::bishop(queen_idx, board.any_piece) | attacks::rook(queen_idx, board.any_piece),
     }
 }
 
@@ -511,6 +370,12 @@ mod pimpl {
 mod tests {
     use super::*;
     use crate::board::FenConsumer;
+
+    fn generate_moves_for(board: &mut Board, mask: Bitboard) -> Moves {
+        let mut moves = generate::<ALL_MOVES>(board);
+        moves.retain(|m| m.get_from() == mask.peek());
+        moves
+    }
 
     macro_rules! a_move {
         ($from:expr,$to:expr) => {
@@ -521,189 +386,20 @@ mod tests {
         };
     }
 
-    fn move_generation_comparison(mut generated: Vec<Move>, mut expected: Vec<Move>) {
+    fn move_generation_comparison(mut generated: Moves, mut expected: Moves) {
         generated.sort_unstable();
         expected.sort_unstable();
 
         assert_eq!(generated, expected);
     }
 
-    fn piece_move_generation_test(fen: &str, file: usize, rank: usize, expected: Vec<Move>) {
+    fn piece_move_generation_test(fen: &str, file: usize, rank: usize, expected: Moves) {
         println!("-- Move generation test at position {}", fen);
 
         let mut board = Board::from_fen(fen);
-        let moves = board.generate_moves_for(file, rank);
+        let moves = generate_moves_for(&mut board, Bitboard::from_coords(file, rank));
 
         move_generation_comparison(moves, expected);
-    }
-
-    mod perft {
-        use super::*;
-
-        fn perft_run(fen: &str, depth: usize, expected: u64) {
-            let mut board = Board::from_fen(fen);
-            assert_eq!(perft(&mut board, depth), expected);
-        }
-
-        fn perft_initial(depth: usize, expected: u64) {
-            perft_run("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", depth, expected);
-        }
-
-        #[test]
-        fn perft_initial_0() {
-            perft_initial(0, 1);
-        }
-
-        #[test]
-        fn perft_initial_1() {
-            perft_initial(1, 20);
-        }
-
-        #[test]
-        fn perft_initial_2() {
-            perft_initial(2, 400);
-        }
-
-        #[test]
-        fn perft_initial_3() {
-            perft_initial(3, 8902);
-        }
-
-        #[test]
-        fn perft_initial_4() {
-            perft_initial(4, 197281);
-        }
-
-        #[test]
-        fn perft_initial_5() {
-            perft_initial(5, 4865609);
-        }
-
-        #[test]
-        fn perft_initial_6() {
-            perft_initial(6, 119060324);
-        }
-
-        fn perft_kiwipete(depth: usize, expected: u64) {
-            perft_run("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0", depth, expected);
-        }
-
-        #[test]
-        fn perft_kiwipete_1() {
-            perft_kiwipete(1, 48);
-        }
-
-        #[test]
-        fn perft_kiwipete_2() {
-            perft_kiwipete(2, 2039);
-        }
-
-        #[test]
-        fn perft_kiwipete_3() {
-            perft_kiwipete(3, 97862);
-        }
-
-        #[test]
-        fn perft_kiwipete_4() {
-            perft_kiwipete(4, 4085603);
-        }
-
-        #[test]
-        fn perft_kiwipete_5() {
-            perft_kiwipete(5, 193690690);
-        }
-
-        fn perft_endgame(depth: usize, expected: u64) {
-            perft_run("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0", depth, expected);
-        }
-
-        #[test]
-        fn perft_endgame_1() {
-            perft_endgame(1, 14);
-        }
-
-        #[test]
-        fn perft_endgame_2() {
-            perft_endgame(2, 191);
-        }
-
-        #[test]
-        fn perft_endgame_3() {
-            perft_endgame(3, 2812);
-        }
-
-        #[test]
-        fn perft_endgame_4() {
-            perft_endgame(4, 43238);
-        }
-
-        #[test]
-        fn perft_endgame_5() {
-            perft_endgame(5, 674624);
-        }
-
-        #[test]
-        fn perft_endgame_6() {
-            perft_endgame(6, 11030083);
-        }
-
-        fn perft_pos4(depth: usize, expected: u64) {
-            perft_run("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", depth, expected);
-        }
-
-        #[test]
-        fn perft_pos4_1() {
-            perft_pos4(1, 6);
-        }
-
-        #[test]
-        fn perft_pos4_2() {
-            perft_pos4(2, 264);
-        }
-
-        #[test]
-        fn perft_pos4_3() {
-            perft_pos4(3, 9467);
-        }
-
-        #[test]
-        fn perft_pos4_4() {
-            perft_pos4(4, 422333);
-        }
-
-        #[test]
-        fn perft_pos4_5() {
-            perft_pos4(5, 15833292);
-        }
-
-        fn perft_pos5(depth: usize, expected: u64) {
-            perft_run("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", depth, expected);
-        }
-
-        #[test]
-        fn perft_pos5_1() {
-            perft_pos5(1, 44);
-        }
-
-        #[test]
-        fn perft_pos5_2() {
-            perft_pos5(2, 1486);
-        }
-
-        #[test]
-        fn perft_pos5_3() {
-            perft_pos5(3, 62379);
-        }
-
-        #[test]
-        fn perft_pos5_4() {
-            perft_pos5(4, 2103487);
-        }
-
-        #[test]
-        fn perft_pos5_5() {
-            perft_pos5(5, 89941194);
-        }
     }
 
     mod pawn {
@@ -1028,7 +724,7 @@ mod tests {
         board.make_move(Move::from_uci("d1a4"));
 
         move_generation_comparison(
-            board.generate_moves(false),
+            generate::<ALL_MOVES>(&mut board),
             vec![
                 a_move!("b7", "b5"),
                 a_move!("b8", "c6"),

@@ -39,7 +39,7 @@ mod pimpl {
     use std::time::{Duration, SystemTime};
     use super::*;
     use crate::types::Side;
-    use crate::moves_generation::{MoveGenerator, MoveList};
+    use crate::moves_generation::MoveList;
     use rand::prelude::SliceRandom;
     use rand::Rng;
     use crate::board::FenProducer;
@@ -80,7 +80,7 @@ mod pimpl {
     pub trait SearchImpl {
         fn search_impl(&mut self, options: Options) -> Move;
 
-        fn get_moves(&mut self, captures_only: bool) -> MoveList;
+        fn get_moves<const CAPTURES_ONLY: bool>(&mut self) -> MoveList;
 
         fn bishop_pair(&self, side: Side) -> bool;
         fn insufficient_material(&self) -> bool;
@@ -98,7 +98,7 @@ mod pimpl {
             return String::new();
         }
 
-        let moves = board.generate_moves(false);
+        let moves = moves_generation::generate_all(board);
         let best = board.transpositions.get_move(board.key());
 
         match best {
@@ -155,7 +155,7 @@ mod pimpl {
             let side = self.side_to_move();
 
             if let Some(book_moves) = self.book.search(side, self.full_moves_count, self.key()) {
-                let mut legal_moves = self.generate_moves(false);
+                let mut legal_moves = moves_generation::generate_all(self);
                 legal_moves.retain(|m| book_moves.contains(m));
                 if !legal_moves.is_empty() {
                     let mut rng = rand::thread_rng();
@@ -228,7 +228,7 @@ mod pimpl {
 
             if best_move == NULL_MOVE {
                 println!("info string null move selected as best, bug? overriding with a semi-random legal move");
-                let legal_moves = self.generate_moves(false);
+                let legal_moves = moves_generation::generate_all(self);
                 if !legal_moves.is_empty() {
                     best_move = legal_moves[0];
                 } else {
@@ -245,8 +245,8 @@ mod pimpl {
             best_move
         }
 
-        fn get_moves(&mut self, captures_only: bool) -> MoveList {
-            let moves = self.generate_moves(captures_only);
+        fn get_moves<const CAPTURES_ONLY: bool>(&mut self) -> MoveList {
+            let moves = if CAPTURES_ONLY { moves_generation::generate_captures(self) } else { moves_generation::generate_all(self) };
             let weights = moves_generation::order(self, &moves);
             MoveList::new(moves, weights)
         }
@@ -325,7 +325,7 @@ mod pimpl {
             }
 
             context.nodes += 1;
-            let moves = self.get_moves(false);
+            let moves = self.get_moves::<false>();
 
             if let Some(score) = self.no_moves_conditions(context, depth, &moves) {
                 return score;
@@ -385,7 +385,7 @@ mod pimpl {
             }
 
             context.nodes += 1;
-            let moves = self.get_moves(false);
+            let moves = self.get_moves::<false>();
 
             if let Some(score) = self.no_moves_conditions(context, depth, &moves) {
                 return score;
@@ -424,7 +424,7 @@ mod pimpl {
                 alpha = score;
             }
 
-            let moves = self.get_moves(true);
+            let moves = self.get_moves::<true>();
             let mut best = NULL_MOVE;
             let mut found_exact = false;
 

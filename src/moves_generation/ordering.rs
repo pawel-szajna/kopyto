@@ -2,8 +2,9 @@ use crate::board::Board;
 use crate::types::{Bitboard, Move, Piece, Side};
 
 type PieceValues = [Option<Piece>; 64];
+pub type Weights = Vec<i64>;
 
-pub fn order(board: &Board, moves: &Vec<Move>) -> Vec<i64> {
+pub fn order(board: &Board, moves: &Vec<Move>) -> Weights {
     let side = board.side_to_move();
     let attacks = board.occupied[!side];
 

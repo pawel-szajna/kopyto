@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::board::Board;
 use crate::types::{Move, Side};
-use crate::moves_generation::MoveGenerator;
+use crate::moves_generation;
 
 type PositionMap = HashMap<u64, Vec<Move>>;
 type SideMap = HashMap<u32, PositionMap>;
@@ -37,7 +37,7 @@ impl Book {
         assert_eq!(moves.len() % 2, 1);
         let mut moves_to_cancel = 0;
         for m in moves {
-            let legal_moves = board.generate_moves(false);
+            let legal_moves = moves_generation::generate_all(board);
 
             if !legal_moves.contains(&m) {
                 panic!("move from opening line is illegal");
@@ -75,7 +75,7 @@ impl Book {
         assert_eq!(moves.len() % 2, 0);
         let mut moves_to_cancel = 0;
         for m in moves {
-            let legal_moves = board.generate_moves(false);
+            let legal_moves = moves_generation::generate_all(board);
 
             if !legal_moves.contains(&m) {
                 panic!("move from opening line is illegal");
