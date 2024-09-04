@@ -1,5 +1,5 @@
 use scanner_rust::ScannerAscii;
-use crate::board::Board;
+use crate::board::{Board, FenConsumer, FenProducer};
 use crate::types::Move;
 use crate::moves_generation::perft;
 use crate::search;

@@ -510,6 +510,7 @@ mod pimpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::board::FenConsumer;
 
     macro_rules! a_move {
         ($from:expr,$to:expr) => {
@@ -528,12 +529,9 @@ mod tests {
     }
 
     fn piece_move_generation_test(fen: &str, file: usize, rank: usize, expected: Vec<Move>) {
-        println!("---------- Move generation test at position {} ---------------", fen);
+        println!("-- Move generation test at position {}", fen);
 
         let mut board = Board::from_fen(fen);
-
-        println!("{}", board.export_graph());
-
         let moves = board.generate_moves_for(file, rank);
 
         move_generation_comparison(moves, expected);

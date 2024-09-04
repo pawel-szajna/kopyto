@@ -3,8 +3,7 @@ use crate::magics::{create_bishop_magics, create_rook_magics, Magics};
 use crate::transpositions::{Transpositions, Zobrist};
 use crate::masks;
 use crate::moves_generation::MoveGenerator;
-use crate::util::*;
-use crate::types::{Bitboard, Move, Piece, Side, Square};
+use crate::types::{Bitboard, Move, Piece, Side};
 
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
@@ -67,7 +66,7 @@ pub struct Board {
     pub castle_kingside: ColorBool,
     pub castle_queenside: ColorBool,
 
-    current_color: Side,
+    pub current_color: Side,
 
     history: Vec<History>,
     zobrist: Zobrist,
@@ -132,111 +131,6 @@ impl Board {
         }
     }
 
-    pub fn from_fen(fen: &str) -> Board {
-        let mut board = Board::new();
-        let mut fen = fen.chars();
-
-        for rank in 0..8 {
-            let mut file = 0;
-            loop {
-                match fen.next() {
-                    None => return board,
-                    Some('/') => break,
-                    Some(' ') => break,
-                    Some('2') => file += 1,
-                    Some('3') => file += 2,
-                    Some('4') => file += 3,
-                    Some('5') => file += 4,
-                    Some('6') => file += 5,
-                    Some('7') => file += 6,
-                    Some('8') => file += 7,
-                    Some('k') => board.put_king(Side::Black, Bitboard::from_coords(file, 7 - rank)),
-                    Some('K') => board.put_king(Side::White, Bitboard::from_coords(file, 7 - rank)),
-                    Some('q') => board.put_queen(Side::Black, Bitboard::from_coords(file, 7 - rank)),
-                    Some('Q') => board.put_queen(Side::White, Bitboard::from_coords(file, 7 - rank)),
-                    Some('r') => board.put_rook(Side::Black, Bitboard::from_coords(file, 7 - rank)),
-                    Some('R') => board.put_rook(Side::White, Bitboard::from_coords(file, 7 - rank)),
-                    Some('p') => board.put_pawn(Side::Black, Bitboard::from_coords(file, 7 - rank)),
-                    Some('P') => board.put_pawn(Side::White, Bitboard::from_coords(file, 7 - rank)),
-                    Some('n') => board.put_knight(Side::Black, Bitboard::from_coords(file, 7 - rank)),
-                    Some('N') => board.put_knight(Side::White, Bitboard::from_coords(file, 7 - rank)),
-                    Some('b') => board.put_bishop(Side::Black, Bitboard::from_coords(file, 7 - rank)),
-                    Some('B') => board.put_bishop(Side::White, Bitboard::from_coords(file, 7 - rank)),
-                    _ => {}
-                }
-                file += 1;
-            }
-        }
-
-        match fen.next() {
-            Some('w') => board.current_color = Side::White,
-            Some('b') => board.current_color = Side::Black,
-            _ => panic!("Invalid fen, expected color to play"),
-        }
-
-        assert_eq!(fen.next(), Some(' '), "Invalid fen, expected space");
-
-        board.castle_kingside = [false, false];
-        board.castle_queenside = [false, false];
-
-        loop {
-            match fen.next() {
-                Some('-') => {
-                    fen.next();
-                    break;
-                }
-                Some(' ') => break,
-                Some('K') => board.castle_kingside[Side::White] = true,
-                Some('k') => board.castle_kingside[Side::Black] = true,
-                Some('Q') => board.castle_queenside[Side::White] = true,
-                Some('q') => board.castle_queenside[Side::Black] = true,
-                _ => panic!("Invalid fen, expected castling rights"),
-            }
-        }
-
-        loop {
-            match fen.next() {
-                Some('-') => {
-                    fen.next();
-                    break;
-                }
-                Some(' ') => break,
-                Some(file) if file.is_alphabetic() => {
-                    let rank = fen.next().unwrap();
-                    // TODO: fix this monstrosity
-                    board.en_passant = Bitboard::from(Square::from(str_to_idx(format!("{}{}", file, rank).as_str())))
-                }
-                _ => panic!("Invalid fen, expected en passant data"),
-            }
-        }
-
-        board.half_moves_clock = 0;
-
-        loop {
-            match fen.next() {
-                Some(' ') => break,
-                Some(x) if x.is_digit(10) => {
-                    board.half_moves_clock = board.half_moves_clock * 10 + x.to_digit(10).unwrap()
-                }
-                _ => panic!("Invalid fen, expected half move count"),
-            }
-        }
-
-        board.full_moves_count = 0;
-
-        loop {
-            match fen.next() {
-                Some(x) if x.is_digit(10) => {
-                    board.full_moves_count = board.full_moves_count * 10 + x.to_digit(10).unwrap()
-                }
-                _ => break,
-            }
-        }
-
-        board.update_hash();
-        board
-    }
-
     pub fn from_starting_position() -> Board {
         let mut board = Board::new();
 
@@ -272,161 +166,37 @@ impl Board {
         board
     }
 
-    fn mask_to_symbol(&self, mask: Bitboard) -> char {
-        const SYMBOLS_KING: [char; 2] = ['K', 'k'];
-        const SYMBOLS_QUEEN: [char; 2] = ['Q', 'q'];
-        const SYMBOLS_ROOK: [char; 2] = ['R', 'r'];
-        const SYMBOLS_BISHOP: [char; 2] = ['B', 'b'];
-        const SYMBOLS_KNIGHT: [char; 2] = ['N', 'n'];
-        const SYMBOLS_PAWN: [char; 2] = ['P', 'p'];
-
-        let side = (self.occupied[Side::White] & mask).empty() as usize;
-
-        if !(self.kings[side] & mask).empty() {
-            SYMBOLS_KING[side]
-        } else if !(self.queens[side] & mask).empty() {
-            SYMBOLS_QUEEN[side]
-        } else if !(self.rooks[side] & mask).empty() {
-            SYMBOLS_ROOK[side]
-        } else if !(self.bishops[side] & mask).empty() {
-            SYMBOLS_BISHOP[side]
-        } else if !(self.knights[side] & mask).empty() {
-            SYMBOLS_KNIGHT[side]
-        } else if !(self.pawns[side] & mask).empty() {
-            SYMBOLS_PAWN[side]
-        } else {
-            '!'
-        }
-    }
-
-    pub fn export_fen(&self) -> String {
-        let mut result = String::new();
-
-        for rank in 0..8 {
-            let mut empty_counter = 0;
-
-            for file in 0..8 {
-                let idx = Square::from((7 - rank) * 8 + file);
-                let mask = Bitboard::from(idx);
-
-                if (self.any_piece & mask).empty() {
-                    empty_counter += 1;
-                    continue;
-                }
-
-                if empty_counter > 0 {
-                    result.push_str(format!("{}", empty_counter).as_str());
-                }
-
-                empty_counter = 0;
-                result.push(self.mask_to_symbol(mask));
-            }
-
-            if empty_counter > 0 {
-                result.push_str(format!("{}", empty_counter).as_str());
-            }
-
-            if rank != 7 {
-                result.push('/');
-            }
-        }
-
-        result.push(' ');
-        result.push(match self.current_color {
-            Side::White => 'w',
-            Side::Black => 'b',
-        });
-
-        result.push(' ');
-        if !(self.castle_kingside[Side::White]
-            || self.castle_queenside[Side::White]
-            || self.castle_kingside[Side::Black]
-            || self.castle_queenside[Side::Black])
-        {
-            result.push('-');
-        } else {
-            if self.castle_kingside[Side::White] {
-                result.push('K');
-            }
-            if self.castle_queenside[Side::White] {
-                result.push('Q');
-            }
-            if self.castle_kingside[Side::Black] {
-                result.push('k');
-            }
-            if self.castle_queenside[Side::Black] {
-                result.push('q');
-            }
-        }
-
-        result.push(' ');
-        match self.en_passant {
-            Bitboard::EMPTY => result.push('-'),
-            x => result.push_str(x.peek().to_string().as_str()),
-        }
-
-        result.push_str(format!(" {}", self.half_moves_clock).as_str());
-        result.push_str(format!(" {}", self.full_moves_count).as_str());
-
-        result
-    }
-
-    #[cfg(test)]
-    pub fn export_graph(&self) -> String {
-        let mut result = String::new();
-
-        for rank in 0..8 {
-            result.push_str(format!("{} ", 8 - rank).as_str());
-            for file in 0..8 {
-                let idx = Square::from((7 - rank) * 8 + file);
-                let mask = Bitboard::from(idx);
-
-                result.push(if (self.any_piece & mask).empty() {
-                    '.'
-                } else {
-                    self.mask_to_symbol(mask)
-                });
-                result.push(' ');
-            }
-            result.push('\n');
-        }
-
-        result.push_str("  A B C D E F G H ");
-
-        result
-    }
-
     fn put_piece_occupancy(&mut self, side: Side, mask: Bitboard) {
         self.occupied[side] |= mask;
         self.any_piece |= mask;
     }
 
-    fn put_king(&mut self, side: Side, mask: Bitboard) {
+    pub fn put_king(&mut self, side: Side, mask: Bitboard) {
         self.kings[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_queen(&mut self, side: Side, mask: Bitboard) {
+    pub fn put_queen(&mut self, side: Side, mask: Bitboard) {
         self.queens[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_rook(&mut self, side: Side, mask: Bitboard) {
+    pub fn put_rook(&mut self, side: Side, mask: Bitboard) {
         self.rooks[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_bishop(&mut self, side: Side, mask: Bitboard) {
+    pub fn put_bishop(&mut self, side: Side, mask: Bitboard) {
         self.bishops[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_knight(&mut self, side: Side, mask: Bitboard) {
+    pub fn put_knight(&mut self, side: Side, mask: Bitboard) {
         self.knights[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
 
-    fn put_pawn(&mut self, side: Side, mask: Bitboard) {
+    pub fn put_pawn(&mut self, side: Side, mask: Bitboard) {
         self.pawns[side] |= mask;
         self.put_piece_occupancy(side, mask);
     }
@@ -548,7 +318,7 @@ impl Board {
         panic!("Internal error: there should be something on {} ({:#066b})", mask.peek(), mask);
     }
 
-    fn update_hash(&mut self) {
+    pub fn update_hash(&mut self) {
         self.hash = self.zobrist.key(self, self.castle_kingside, self.castle_queenside);
     }
 
@@ -728,6 +498,7 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::board::{FenConsumer, FenProducer};
     use crate::types::Promotion;
 
     impl Board {
@@ -737,14 +508,6 @@ mod tests {
 
         fn assert_position(&self, fen: &str) {
             let actual = self.export_fen();
-            if actual != fen {
-                let actual_board = self.export_graph();
-                let expected_board = Board::from_fen(fen).export_graph();
-                actual_board
-                    .split('\n')
-                    .zip(expected_board.split('\n'))
-                    .for_each(|x| println!("{:>20}  {:>20}", x.0, x.1));
-            }
             assert_eq!(actual, fen);
         }
     }

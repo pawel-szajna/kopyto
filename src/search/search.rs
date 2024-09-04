@@ -181,6 +181,7 @@ mod pimpl {
     use crate::moves_generation::MoveGenerator;
     use rand::prelude::SliceRandom;
     use rand::Rng;
+    use crate::board::FenProducer;
     use crate::transpositions::Score;
     use crate::util;
 
