@@ -1,8 +1,8 @@
-mod moves_generation;
-mod moves_list;
-mod moves_ordering;
+mod generation;
+mod list;
+mod ordering;
 
-pub use moves_generation::MoveGenerator;
-pub use moves_generation::perft;
-pub use moves_list::MoveList;
-pub use moves_ordering::order;
+pub use generation::MoveGenerator;
+pub use generation::perft;
+pub use list::MoveList;
+pub use ordering::order;
