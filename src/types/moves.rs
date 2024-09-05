@@ -1,4 +1,3 @@
-use crate::util;
 use crate::types::{Bitboard, Piece, Square};
 use std::fmt;
 
@@ -18,11 +17,9 @@ pub struct Move {
 
 impl fmt::Debug for Move {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let from = util::idx_to_str(self.get_from() as usize);
-        let to = util::idx_to_str(self.get_to() as usize);
         match self.m & 0b100000000000000 != 0 {
-            true => write!(f, "{}{}+{:?}", from, to, self.get_promotion()),
-            false => write!(f, "{}{}", from, to),
+            true => write!(f, "{}{}+{:?}", self.get_from(), self.get_to(), self.get_promotion()),
+            false => write!(f, "{}{}", self.get_from(), self.get_to()),
         }
     }
 }
@@ -61,7 +58,7 @@ impl Move {
     }
 
     pub fn from_str(from: &str, to: &str) -> Self {
-        Self::from_idx(util::str_to_idx(from), util::str_to_idx(to))
+        Self::from_idx(from.into(), to.into())
     }
 
     pub fn from_str_prom(from: &str, to: &str, promotion: Promotion) -> Self {
@@ -131,15 +128,13 @@ impl Move {
     }
 
     pub fn to_uci(&self) -> String {
-        let from = util::idx_to_str(self.get_from() as usize);
-        let to = util::idx_to_str(self.get_to() as usize);
         match self.m & 0b100000000000000 != 0 {
-            false => format!("{}{}", from, to),
+            false => format!("{}{}", self.get_from().to_string(), self.get_to().to_string()),
             true => {
                 format!(
                     "{}{}{}",
-                    from,
-                    to,
+                    self.get_from().to_string(),
+                    self.get_to().to_string(),
                     match self.get_promotion() {
                         Promotion::Queen => 'q',
                         Promotion::Rook => 'r',

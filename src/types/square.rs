@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::ops::{Index, IndexMut};
+use std::str::Chars;
 
 #[repr(usize)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -81,6 +82,41 @@ impl<T> IndexMut<Square> for [T; 64] {
 impl From<usize> for Square {
     fn from(value: usize) -> Self {
         unsafe { std::mem::transmute::<usize, Square>(value) }
+    }
+}
+
+impl From<&str> for Square {
+    fn from(value: &str) -> Self {
+        fn get_file(pos: &mut Chars) -> usize {
+            match pos.next() {
+                Some('a') => 0,
+                Some('b') => 1,
+                Some('c') => 2,
+                Some('d') => 3,
+                Some('e') => 4,
+                Some('f') => 5,
+                Some('g') => 6,
+                Some('h') => 7,
+                _ => panic!("Invalid file"),
+            }
+        }
+        fn get_rank(pos: &mut Chars) -> usize {
+            match pos.next() {
+                Some('1') => 0,
+                Some('2') => 1,
+                Some('3') => 2,
+                Some('4') => 3,
+                Some('5') => 4,
+                Some('6') => 5,
+                Some('7') => 6,
+                Some('8') => 7,
+                _ => panic!("Invalid rank"),
+            }
+        }
+        let mut pos = value.chars();
+        let file = get_file(&mut pos);
+        let rank = get_rank(&mut pos);
+        Square::from_coords(file, rank)
     }
 }
 

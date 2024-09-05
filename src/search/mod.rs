@@ -1,7 +1,8 @@
-mod search;
+mod book;
+mod checks;
 mod eval;
 mod options;
-mod checks;
+mod search;
 
 pub use options::Options;
 pub use search::Searcher;

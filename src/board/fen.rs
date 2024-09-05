@@ -1,6 +1,5 @@
 use crate::board::Board;
 use crate::types::{Bitboard, Side, Square};
-use crate::util::str_to_idx;
 
 pub trait FenConsumer {
     fn from_fen(fen: &str) -> Self;
@@ -83,7 +82,7 @@ impl FenConsumer for Board {
                 Some(file) if file.is_alphabetic() => {
                     let rank = fen.next().unwrap();
                     // TODO: fix this monstrosity
-                    board.en_passant = Bitboard::from(Square::from(str_to_idx(format!("{}{}", file, rank).as_str())))
+                    board.en_passant = Bitboard::from(Square::from(format!("{}{}", file, rank).as_str()))
                 }
                 _ => panic!("Invalid fen, expected en passant data"),
             }

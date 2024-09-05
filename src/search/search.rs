@@ -4,11 +4,11 @@ use std::time::{Duration, SystemTime};
 use rand::Rng;
 use rand::seq::SliceRandom;
 use crate::board::{Board, FenProducer};
-use crate::{book, moves_generation, util};
+use crate::moves_generation;
 use crate::moves_generation::MoveList;
 use crate::search::checks::Checks;
 use crate::search::eval::Score;
-use crate::search::{eval, Options};
+use crate::search::{book, eval, Options};
 use crate::transpositions::{TableScore, Transpositions};
 use crate::types::Move;
 
@@ -83,7 +83,11 @@ impl Searcher {
             "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} pv{}",
             current_depth,
             self.seldepth,
-            util::eval_to_str(score),
+            if score.abs() > 9000 {
+                format!("mate {}", score.signum() * (1 + (10000 - score.abs())) / 2)
+            } else {
+                format!("cp {}", score)
+            },
             self.nodes,
             1000000000 * self.nodes as u128 / max(1, time.as_nanos()),
             time.as_millis(),
