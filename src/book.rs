@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use crate::board::Board;
 use crate::types::{Move, Side};
 use crate::moves_generation;
@@ -301,3 +302,5 @@ impl BookGenerator for Board {
         book
     }
 }
+
+pub static BOOK: LazyLock<Book> = LazyLock::new(|| Board::from_starting_position().prepare_book());

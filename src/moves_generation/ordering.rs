@@ -4,11 +4,9 @@ use crate::types::{Bitboard, Move, Piece, Side};
 type PieceValues = [Option<Piece>; 64];
 pub type Weights = Vec<i64>;
 
-pub fn order(board: &Board, moves: &Vec<Move>) -> Weights {
+pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>) -> Weights {
     let side = board.side_to_move();
     let attacks = board.occupied[!side];
-
-    let hash_move = board.transpositions.get_move(board.key());
     let pieces = cache_piece_values(board, side, moves);
 
     moves.iter().map(|m| {

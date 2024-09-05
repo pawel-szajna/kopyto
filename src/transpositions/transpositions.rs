@@ -1,11 +1,12 @@
+use crate::search::Score;
 use crate::types::Move;
-use crate::transpositions::Score;
+use crate::transpositions::TableScore;
 
 #[derive(Clone, Copy)]
 struct Entry {
     hash: u64,
-    depth: i64,
-    score: Score,
+    depth: i16,
+    score: TableScore,
     m: Move,
 }
 
@@ -14,7 +15,7 @@ impl Entry {
         Self {
             hash: 0,
             depth: 0,
-            score: Score::Exact(0),
+            score: TableScore::Exact(0),
             m: Move::new(),
         }
     }
@@ -47,21 +48,21 @@ impl Transpositions {
         }
     }
 
-    pub fn get(&self, hash: u64, depth: i64, alpha: i64, beta: i64) -> Option<(i64, Move)> {
+    pub fn get(&self, hash: u64, depth: i16, alpha: Score, beta: Score) -> Option<(Score, Move)> {
         let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
         if entry.hash != hash || entry.depth < depth {
             return None;
         }
 
         match entry.score {
-            Score::Exact(score) => Some((score, entry.m)),
-            Score::LowerBound(score) if score <= alpha => Some((score, entry.m)),
-            Score::UpperBound(score) if score >= beta => Some((score, entry.m)),
+            TableScore::Exact(score) => Some((score, entry.m)),
+            TableScore::LowerBound(score) if score <= alpha => Some((score, entry.m)),
+            TableScore::UpperBound(score) if score >= beta => Some((score, entry.m)),
             _ => None,
         }
     }
 
-    pub fn set(&mut self, hash: u64, depth: i64, score: Score, m: Move) {
+    pub fn set(&mut self, hash: u64, depth: i16, score: TableScore, m: Move) {
         let idx = hash as usize % TRANSPOSITION_TABLE_LENGTH;
         if self.scores[idx].hash != hash || self.scores[idx].depth <= depth {
             self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH] = Entry {

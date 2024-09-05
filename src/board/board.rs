@@ -1,12 +1,11 @@
-use crate::book::{Book, BookGenerator};
-use crate::transpositions::{Transpositions, Zobrist};
-use crate::masks;
+use crate::{masks, transpositions};
 use crate::moves_generation;
 use crate::types::{Bitboard, Move, Piece, Side};
 
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 
+#[derive(Clone)]
 struct History {
     from: Bitboard,
     to: Bitboard,
@@ -51,6 +50,7 @@ impl History {
     }
 }
 
+#[derive(Clone)]
 pub struct Board {
     pub kings: ColorBitboard,
     pub queens: ColorBitboard,
@@ -68,8 +68,6 @@ pub struct Board {
     pub current_color: Side,
 
     history: Vec<History>,
-    zobrist: Zobrist,
-    pub transpositions: Transpositions,
     hash: u64,
 
     pub half_moves_clock: u32,
@@ -80,10 +78,6 @@ pub struct Board {
     checkmate: [Option<bool>; 2],
     pub attacks: [Option<Bitboard>; 2],
     pub moves: [Option<Vec<Move>>; 2],
-
-    pub last_eval: i64,
-
-    pub book: Book,
 }
 
 impl Board {
@@ -105,8 +99,6 @@ impl Board {
             current_color: Side::White,
 
             history: Vec::new(),
-            zobrist: Zobrist::new(),
-            transpositions: Transpositions::new(),
             hash: 0,
 
             half_moves_clock: 0,
@@ -117,10 +109,6 @@ impl Board {
             checkmate: [None, None],
             attacks: [None, None],
             moves: [None, None],
-
-            last_eval: 0,
-
-            book: Book::new(),
         }
     }
 
@@ -154,8 +142,6 @@ impl Board {
         }
 
         board.update_hash();
-        board.book = board.prepare_book();
-
         board
     }
 
@@ -313,7 +299,7 @@ impl Board {
     }
 
     pub fn update_hash(&mut self) {
-        self.hash = self.zobrist.key(self, self.castle_kingside, self.castle_queenside);
+        self.hash = transpositions::ZOBRIST.key(self, self.castle_kingside, self.castle_queenside);
     }
 
     pub fn make_move(&mut self, m: Move) {

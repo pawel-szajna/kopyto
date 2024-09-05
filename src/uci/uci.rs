@@ -3,7 +3,7 @@ use crate::board::{Board, FenConsumer, FenProducer};
 use crate::types::Move;
 use crate::moves_generation::perft;
 use crate::search;
-use crate::search::Search;
+use crate::search::Searcher;
 
 pub struct UCI {
     board: Board,
@@ -113,12 +113,12 @@ impl UCI {
                     None => break,
                     Some(command) => match command.as_str() {
                         "infinite" => options.depth = None,
-                        "depth" => options.depth = scanner.next_i64().unwrap(),
-                        "wtime" => options.white_time = scanner.next_u64().unwrap().unwrap(),
-                        "btime" => options.black_time = scanner.next_u64().unwrap().unwrap(),
-                        "winc" => options.white_increment = scanner.next_u64().unwrap().unwrap(),
-                        "binc" => options.black_increment = scanner.next_u64().unwrap().unwrap(),
-                        "movetime" => options.target_time = scanner.next_u64().unwrap(),
+                        "depth" => options.depth = scanner.next_i16().unwrap(),
+                        "wtime" => options.white_time = scanner.next_i32().unwrap().unwrap(),
+                        "btime" => options.black_time = scanner.next_i32().unwrap().unwrap(),
+                        "winc" => options.white_increment = scanner.next_i32().unwrap().unwrap(),
+                        "binc" => options.black_increment = scanner.next_i32().unwrap().unwrap(),
+                        "movetime" => options.target_time = scanner.next_i32().unwrap(),
                         _ => (),
                     }
                 },
@@ -139,7 +139,8 @@ impl UCI {
 
         let mut options = search::Options::new();
         self.parse_go_options(&mut options, cmd);
-        let result = self.board.search(options);
+        let mut searcher = Searcher::new(self.board.clone());
+        let result = searcher.go(options);
 
         println!("bestmove {}", result.to_uci());
     }

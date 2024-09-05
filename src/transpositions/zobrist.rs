@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use rand::RngCore;
 use crate::board::Board;
 use crate::types::{Bitboard, Side};
@@ -55,7 +56,7 @@ mod init {
 }
 
 impl Zobrist {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             keys_pawns: init::generate_piece_keys(),
             keys_knights: init::generate_piece_keys(),
@@ -123,3 +124,5 @@ impl Zobrist {
         key
     }
 }
+
+pub static ZOBRIST: LazyLock<Zobrist> = LazyLock::new(|| Zobrist::new());

@@ -1,146 +1,110 @@
-use crate::board::Board;
+use std::cmp::{max, min};
+use std::thread;
+use std::time::{Duration, SystemTime};
+use rand::Rng;
+use rand::seq::SliceRandom;
+use crate::board::{Board, FenProducer};
+use crate::{book, moves_generation, util};
+use crate::moves_generation::MoveList;
+use crate::search::checks::Checks;
+use crate::search::eval::Score;
+use crate::search::{eval, Options};
+use crate::transpositions::{TableScore, Transpositions};
 use crate::types::Move;
 
-pub struct Options {
-    pub white_time: u64,
-    pub black_time: u64,
-    #[allow(dead_code)]
-    pub white_increment: u64,
-    #[allow(dead_code)]
-    pub black_increment: u64,
-    pub target_time: Option<u64>,
-    pub depth: Option<i64>,
+const NULL_MOVE: Move = Move::new();
+const MAX_DEPTH: i16 = 100;
+
+const ALL_MOVES: bool = false;
+const CAPTURES_ONLY: bool = true;
+
+pub struct Searcher {
+    board: Board,
+    transpositions: Transpositions,
+
+    depth: i16,
+    seldepth: i16,
+
+    last_eval: Score,
+    best_move: Move,
+
+    nodes: u64,
+
+    clock_queries: usize,
+    start_time: SystemTime,
+    target_time: u128,
+    time_hit: bool,
 }
 
-impl Options {
-    pub fn new() -> Self {
+impl Searcher {
+    pub fn new(board: Board) -> Self {
         Self {
-            white_time: u64::MAX,
-            black_time: u64::MAX,
-            white_increment: 0,
-            black_increment: 0,
-            target_time: None,
-            depth: None,
-        }
-    }
-}
+            board,
+            transpositions: Transpositions::new(),
 
-pub trait Search: pimpl::SearchImpl {
-    fn search(&mut self, options: Options) -> Move {
-        self.search_impl(options)
-    }
-}
+            depth: 0,
+            seldepth: 0,
 
-impl Search for Board {}
+            last_eval: 0,
+            best_move: NULL_MOVE,
 
-mod pimpl {
-    use std::cmp::{min, max};
-    use std::thread;
-    use std::time::{Duration, SystemTime};
-    use super::*;
-    use crate::types::Side;
-    use crate::moves_generation::MoveList;
-    use rand::prelude::SliceRandom;
-    use rand::Rng;
-    use crate::board::FenProducer;
-    use crate::search::eval;
-    use crate::transpositions::Score;
-    use crate::{moves_generation, util};
+            nodes: 0,
 
-    const NULL_MOVE: Move = Move::new();
-    const MIN_MOVE_TIME: u128 = 200;
-    const MAX_DEPTH: i64 = 100;
-
-    pub struct SearchContext {
-        depth: i64,
-        seldepth: i64,
-        best_move: Move,
-        nodes: u64,
-        clock_queries: usize,
-        start_time: SystemTime,
-        target_time: u128,
-        time_hit: bool,
-    }
-
-    impl SearchContext {
-        pub fn new(depth: i64, start_time: SystemTime, target_time: u128) -> Self {
-            Self {
-                depth,
-                seldepth: 0,
-                best_move: NULL_MOVE,
-                nodes: 0,
-                clock_queries: 0,
-                start_time,
-                target_time,
-                time_hit: false,
-            }
+            clock_queries: 0,
+            start_time: SystemTime::now(),
+            target_time: 0,
+            time_hit: false,
         }
     }
 
-    pub trait SearchImpl {
-        fn search_impl(&mut self, options: Options) -> Move;
-
-        fn get_moves<const CAPTURES_ONLY: bool>(&mut self) -> MoveList;
-
-        fn bishop_pair(&self, side: Side) -> bool;
-        fn insufficient_material(&self) -> bool;
-        fn draw_conditions(&self) -> bool;
-        fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64>;
-        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &MoveList) -> Option<i64>;
-
-        fn negamax(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
-        fn zero_window(&mut self, context: &mut SearchContext, depth: i64, beta: i64) -> i64;
-        fn qsearch(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> i64;
-    }
-
-    fn get_pv(board: &mut Board, limit: i64) -> String {
+    fn get_pv(&mut self, limit: i16) -> String {
         if limit <= 0 {
             return String::new();
         }
 
-        let moves = moves_generation::generate_all(board);
-        let best = board.transpositions.get_move(board.key());
+        let moves = moves_generation::generate_all(&self.board);
+        let best = self.transpositions.get_move(self.board.key());
 
         match best {
             Some(m) if moves.contains(&m) => {
-                board.make_move(m);
-                let result = format!(" {:?}{}", m, get_pv(board, limit - 1));
-                board.unmake_move();
+                self.board.make_move(m);
+                let result = format!(" {:?}{}", m, self.get_pv(limit - 1));
+                self.board.unmake_move();
                 result
             },
             _ => String::new(),
         }
     }
 
-    fn print_search_info(board: &mut Board, context: &SearchContext, current_depth: i64, score: i64) {
-        let time = context.start_time.elapsed().unwrap();
-        let pv = get_pv(board, max(current_depth, context.seldepth));
+    fn print_search_info(&mut self, current_depth: i16, score: Score) {
+        let time = self.start_time.elapsed().unwrap();
+        let pv = self.get_pv(current_depth);
         println!(
             "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} pv{}",
             current_depth,
-            context.seldepth,
+            self.seldepth,
             util::eval_to_str(score),
-            context.nodes,
-            1000000000 * context.nodes as u128 / max(1, time.as_nanos()),
+            self.nodes,
+            1000000000 * self.nodes as u128 / max(1, time.as_nanos()),
             time.as_millis(),
-            board.transpositions.usage(),
+            self.transpositions.usage(),
             if pv.is_empty() { String::from(" ?") } else { pv },
         );
     }
 
-    fn out_of_time(context: &mut SearchContext) -> bool {
-        if context.time_hit {
+    fn out_of_time(&mut self) -> bool {
+        if self.time_hit {
             return true;
         }
 
         // profiler actually said that this was quite costly, but since we are processing
         // millions of nodes per second, checking the clock once every 1000th is probably
         // acceptable
-        context.clock_queries += 1;
-        if context.clock_queries > 1000 {
-            context.clock_queries = 0;
-            if context.start_time.elapsed().unwrap().as_millis() >= context.target_time {
-                context.time_hit = true;
+        self.clock_queries += 1;
+        if self.clock_queries > 1000 {
+            self.clock_queries = 0;
+            if self.start_time.elapsed().unwrap().as_millis() >= self.target_time {
+                self.time_hit = true;
                 return true;
             }
         }
@@ -148,313 +112,290 @@ mod pimpl {
         false
     }
 
-    impl SearchImpl for Board {
-        fn search_impl(&mut self, options: Options) -> Move {
-            let start = SystemTime::now();
+    fn calculate_target_time(&self, options: &Options) -> u128 {
+        let side = self.board.side_to_move();
+        let our_time = side.choose(options.white_time, options.black_time);
+        let opponent_time = !side.choose(options.white_time, options.black_time);
+        let time_advantage = our_time - opponent_time;
+        let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
 
-            let side = self.side_to_move();
-
-            if let Some(book_moves) = self.book.search(side, self.full_moves_count, self.key()) {
-                let mut legal_moves = moves_generation::generate_all(self);
-                legal_moves.retain(|m| book_moves.contains(m));
-                if !legal_moves.is_empty() {
-                    let mut rng = rand::thread_rng();
-                    if let Some(m) = legal_moves.choose(&mut rng) {
-                        thread::sleep(Duration::from_millis(rng.gen_range(50..100)));
-                        println!("info depth 1 score cp 0");
-                        return m.clone();
-                    }
-                }
-            }
-
-            let our_time = side.choose(options.white_time, options.black_time);
-            let opponent_time = !side.choose(options.white_time, options.black_time);
-            let time_advantage = our_time as i64 - opponent_time as i64;
-            let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
-
-            let target_time = match options.target_time {
-                Some(target_time) => target_time - 100,
-                None => {
-                    let divider = match self.full_moves_count {
-                        m if m < 2 => 60,
-                        m if m < 4 => 25,
-                        m if m < 6 => 12,
-                        _ => 8,
-                    };
-                    our_time / divider + max(0, time_advantage_modifier) as u64
-                },
-            };
-
-            println!("info string our_time {} opponent_time {} time_advantage {} advantage_modifier {} target_time {}", our_time ,opponent_time, time_advantage, time_advantage_modifier, target_time);
-
-            let depth = min(options.depth.unwrap_or(i64::MAX), MAX_DEPTH);
-            let mut context = SearchContext::new(depth, start, max(target_time as u128, MIN_MOVE_TIME));
-            let mut eval = self.last_eval;
-            let mut abs_eval = 0;
-            let mut best_move = NULL_MOVE;
-
-            for current_depth in 1..=depth {
-                context.depth = current_depth;
-                let iter_start = SystemTime::now();
-                let last_eval = eval;
-
-                let window_size = 40;
-
-                eval = self.negamax(&mut context, current_depth, last_eval - window_size, last_eval + window_size);
-                if context.time_hit {
-                    break;
-                }
-
-                if (last_eval - eval).abs() >= window_size {
-                    eval = self.negamax(&mut context, current_depth, i64::MIN + 1, i64::MAX);
-                    if context.time_hit {
-                        break;
-                    }
-                }
-
-                best_move = context.best_move;
-
-                abs_eval = side.choose(eval, -eval);
-
-                let time_taken = context.start_time.elapsed().unwrap();
-                let iter_taken = iter_start.elapsed().unwrap();
-
-                print_search_info(self, &context, context.depth, abs_eval);
-
-                if time_taken.as_millis() >= context.target_time || iter_taken.as_millis() > context.target_time / 8 {
-                    break;
-                }
-            }
-
-            if best_move == NULL_MOVE {
-                println!("info string null move selected as best, bug? overriding with a semi-random legal move");
-                let legal_moves = moves_generation::generate_all(self);
-                if !legal_moves.is_empty() {
-                    best_move = legal_moves[0];
-                } else {
-                    println!("info string no legal moves?!");
-                }
-                println!("info string current position is {}", self.export_fen());
-            }
-
-            if context.time_hit {
-                print_search_info(self, &context, context.depth - 1, abs_eval);
-            }
-
-            self.last_eval = -eval;
-            best_move
-        }
-
-        fn get_moves<const CAPTURES_ONLY: bool>(&mut self) -> MoveList {
-            let moves = if CAPTURES_ONLY { moves_generation::generate_captures(self) } else { moves_generation::generate_all(self) };
-            let weights = moves_generation::order(self, &moves);
-            MoveList::new(moves, weights)
-        }
-
-        fn bishop_pair(&self, side: Side) -> bool {
-            let bishops = self.bishops[side];
-            let mut lsb = 0;
-            let mut dsb = 0;
-            for bishop in bishops {
-                match bishop.is_white() {
-                    true => lsb += 1,
-                    false => dsb += 1,
-                }
-            }
-            lsb > 0 && dsb > 0
-        }
-
-        fn insufficient_material(&self) -> bool {
-            !(
-                self.queens[Side::White].not_empty() ||
-                self.queens[Side::Black].not_empty() ||
-                self.rooks[Side::White].not_empty() ||
-                self.rooks[Side::Black].not_empty() ||
-                self.pawns[Side::White].not_empty() ||
-                self.pawns[Side::Black].not_empty() ||
-                self.knights[Side::White].pieces() > 3 ||
-                self.knights[Side::Black].pieces() > 3 ||
-                (self.bishops[Side::White].not_empty() && self.knights[Side::White].not_empty()) ||
-                (self.bishops[Side::Black].not_empty() && self.bishops[Side::Black].not_empty()) ||
-                self.bishop_pair(Side::White) ||
-                self.bishop_pair(Side::Black)
-            )
-        }
-
-        fn draw_conditions(&self) -> bool {
-            self.repeated_position() || self.half_moves_clock >= 100 || self.insufficient_material()
-        }
-
-        fn break_conditions(&mut self, context: &mut SearchContext, depth: i64, alpha: i64, beta: i64) -> Option<i64> {
-            if depth == context.depth {
-                return None; // do not exit early from search root
-            }
-
-            if out_of_time(context) {
-                return Some(0);
-            }
-
-            if self.draw_conditions() {
-                return Some(0);
-            }
-
-            if let Some((score, _)) = self.transpositions.get(self.key(), depth, alpha, beta) {
-                return Some(score);
-            }
-
-            None
-        }
-
-        fn no_moves_conditions(&mut self, context: &SearchContext, depth: i64, moves: &MoveList) -> Option<i64> {
-            match moves.is_empty() {
-                false => None,
-                true => Some(match self.in_check(self.side_to_move()) {
-                    false => 0, // stalemate
-                    true => -(10000 - (context.depth - depth)), // checkmate in N
-                })
-            }
-        }
-
-        fn negamax(&mut self, context: &mut SearchContext, depth: i64, mut alpha: i64, beta: i64) -> i64 {
-            if let Some(score) = self.break_conditions(context, depth, alpha, beta) {
-                return score;
-            }
-
-            if depth == 0 {
-                return self.qsearch(context, 0, alpha, beta);
-            }
-
-            context.nodes += 1;
-            let moves = self.get_moves::<false>();
-
-            if let Some(score) = self.no_moves_conditions(context, depth, &moves) {
-                return score;
-            }
-
-            let mut best = NULL_MOVE;
-            let mut found_exact = false;
-
-            for m in moves {
-                self.make_move(m.clone());
-                let key = self.key();
-                let score = match found_exact {
-                    false => -self.negamax(context, depth - 1, -beta, -alpha),
-                    true => {
-                        let mut score = -self.zero_window(context, depth - 1, -alpha);
-                        if score > alpha {
-                            score = -self.negamax(context, depth - 1, -beta, -alpha);
-                        }
-                        score
-                    }
+        match options.target_time {
+            Some(target_time) => target_time as u128 - 100,
+            None => {
+                let divider = match self.board.full_moves_count {
+                    m if m < 2 => 60,
+                    m if m < 4 => 25,
+                    m if m < 6 => 12,
+                    _ => 8,
                 };
-                self.unmake_move();
+                (our_time / divider + max(0, time_advantage_modifier)) as u128
+            },
+        }
+    }
 
-                if context.time_hit {
-                    return 0;
+    fn get_book_move(&self) -> Option<Move> {
+        // TODO: book should be opt-in, not default
+        if let Some(book_moves) = book::BOOK.search(self.board.current_color, self.board.full_moves_count, self.board.key()) {
+            let mut legal_moves = moves_generation::generate_all(&self.board);
+            legal_moves.retain(|m| book_moves.contains(m));
+            if !legal_moves.is_empty() {
+                let mut rng = rand::thread_rng();
+                if let Some(m) = legal_moves.choose(&mut rng) {
+                    thread::sleep(Duration::from_millis(rng.gen_range(50..100)));
+                    println!("info depth 1 score cp 0");
+                    return Some(m.clone());
                 }
+            }
+        }
 
-                if score >= beta {
-                    self.transpositions.set(key, depth, Score::LowerBound(beta), m);
-                    return beta;
+        None
+    }
+
+    fn get_moves<const CAPTURES_ONLY: bool>(&mut self) -> MoveList {
+        let moves = if CAPTURES_ONLY {
+            moves_generation::generate_captures(&self.board)
+        } else {
+            moves_generation::generate_all(&self.board)
+        };
+        let weights = moves_generation::order(&self.board, &moves, self.transpositions.get_move(self.board.key()));
+        MoveList::new(moves, weights)
+    }
+
+    fn break_conditions(&mut self, depth: i16, alpha: Score, beta: Score) -> Option<Score> {
+        if depth == self.depth {
+            return None; // do not exit early from search root
+        }
+
+        if self.out_of_time() {
+            return Some(0);
+        }
+
+        if self.board.draw_conditions() {
+            return Some(0);
+        }
+
+        if let Some((score, _)) = self.transpositions.get(self.board.key(), depth, alpha, beta) {
+            return Some(score);
+        }
+
+        None
+    }
+
+    fn no_moves_conditions(&mut self, depth: i16, moves: &MoveList) -> Option<Score> {
+        match moves.is_empty() {
+            false => None,
+            true => Some(match self.board.in_check(self.board.side_to_move()) {
+                false => 0, // stalemate
+                true => -(10000 - (self.depth - depth)), // checkmate in N
+            })
+        }
+    }
+
+    pub fn go(&mut self, options: Options) -> Move {
+        if let Some(book_move) = self.get_book_move() {
+            return book_move;
+        }
+
+        let target_depth = min(options.depth.unwrap_or(i16::MAX), MAX_DEPTH);
+        self.start_time = SystemTime::now();
+        self.target_time = self.calculate_target_time(&options);
+
+        let mut eval = self.last_eval;
+        let mut abs_eval = 0;
+        let mut best_move = NULL_MOVE;
+
+        for current_depth in 1..=target_depth {
+            let iter_start = SystemTime::now();
+            let last_eval = eval;
+
+            self.depth = current_depth;
+            self.seldepth = 0;
+
+            let window_size = 40;
+
+            eval = self.negamax(current_depth, last_eval - window_size, last_eval + window_size);
+            if self.time_hit {
+                break;
+            }
+
+            if (last_eval - eval).abs() >= window_size {
+                eval = self.negamax(current_depth, Score::MIN + 1, Score::MAX);
+                if self.time_hit {
+                    break;
                 }
+            }
 
-                if score > alpha {
-                    best = m;
-                    found_exact = true;
-                    alpha = score;
+            best_move = self.best_move;
+            abs_eval = self.board.current_color.choose(eval, -eval);
 
-                    if depth == context.depth {
-                        context.best_move = m;
+            let time_taken = self.start_time.elapsed().unwrap();
+            let iter_taken = iter_start.elapsed().unwrap();
+
+            self.print_search_info(self.depth, abs_eval);
+
+            if time_taken.as_millis() >= self.target_time || iter_taken.as_millis() > self.target_time / 8 {
+                break;
+            }
+        }
+
+        if best_move == NULL_MOVE {
+            println!("info string null move selected as best, bug? overriding with a semi-random legal move");
+            let legal_moves = moves_generation::generate_all(&self.board);
+            if !legal_moves.is_empty() {
+                best_move = legal_moves[0];
+            } else {
+                println!("info string no legal moves?!");
+            }
+            println!("info string current position is {}", self.board.export_fen());
+        }
+
+        if self.time_hit {
+            self.print_search_info(self.depth - 1, abs_eval);
+        }
+
+        self.last_eval = -eval;
+        best_move
+    }
+
+    fn negamax(&mut self, depth: i16, mut alpha: Score, beta: Score) -> Score {
+        if let Some(score) = self.break_conditions(depth, alpha, beta) {
+            return score;
+        }
+
+        if depth == 0 {
+            return self.qsearch(0, alpha, beta);
+        }
+
+        self.nodes += 1;
+        let moves = self.get_moves::<ALL_MOVES>();
+
+        if let Some(score) = self.no_moves_conditions(depth, &moves) {
+            return score;
+        }
+
+        let mut best = NULL_MOVE;
+        let mut found_exact = false;
+
+        for m in moves {
+            self.board.make_move(m.clone());
+            let key = self.board.key();
+            let score = match found_exact {
+                false => -self.negamax(depth - 1, -beta, -alpha),
+                true => {
+                    let mut score = -self.zero_window(depth - 1, -alpha);
+                    if score > alpha {
+                        score = -self.negamax(depth - 1, -beta, -alpha);
                     }
+                    score
                 }
+            };
+            self.board.unmake_move();
+
+            if self.time_hit {
+                return 0;
             }
-
-            self.transpositions.set(self.key(), depth, Score::from_alpha(alpha, found_exact), best);
-            context.seldepth = max(context.seldepth, context.depth - depth);
-
-            alpha
-        }
-
-        fn zero_window(&mut self, context: &mut SearchContext, depth: i64, beta: i64) -> i64 {
-            if let Some(score) = self.break_conditions(context, depth, beta - 1, beta) {
-                return score;
-            }
-
-            if depth == 0 {
-                return self.qsearch(context, 0, beta - 1, beta);
-            }
-
-            context.nodes += 1;
-            let moves = self.get_moves::<false>();
-
-            if let Some(score) = self.no_moves_conditions(context, depth, &moves) {
-                return score;
-            }
-
-            for m in moves {
-                self.make_move(m);
-                let eval = -self.zero_window(context, depth - 1, 1 - beta);
-                self.unmake_move();
-
-                if eval >= beta {
-                    return beta;
-                }
-            }
-
-            beta - 1
-        }
-
-        fn qsearch(&mut self, context: &mut SearchContext, depth: i64, mut alpha: i64, beta: i64) -> i64 {
-            if let Some(score) = self.break_conditions(context, depth, alpha, beta) {
-                return score;
-            }
-
-            let side = self.side_to_move();
-            let multiplier = side.choose(1, -1);
-
-            context.nodes += 1;
-
-            let score = eval::evaluate(self) * multiplier;
 
             if score >= beta {
+                self.transpositions.set(key, depth, TableScore::LowerBound(beta), m);
+                return beta;
+            }
+
+            if score > alpha {
+                best = m;
+                found_exact = true;
+                alpha = score;
+
+                if depth == self.depth {
+                    self.best_move = m;
+                }
+            }
+        }
+
+        self.transpositions.set(self.board.key(), depth, TableScore::from_alpha(alpha, found_exact), best);
+        self.seldepth = max(self.seldepth, self.depth - depth);
+
+        alpha
+    }
+
+    fn zero_window(&mut self, depth: i16, beta: Score) -> Score {
+        if let Some(score) = self.break_conditions(depth, beta - 1, beta) {
+            return score;
+        }
+
+        if depth == 0 {
+            return self.qsearch(0, beta - 1, beta);
+        }
+
+        self.nodes += 1;
+        let moves = self.get_moves::<ALL_MOVES>();
+
+        if let Some(score) = self.no_moves_conditions(depth, &moves) {
+            return score;
+        }
+
+        for m in moves {
+            self.board.make_move(m);
+            let eval = -self.zero_window(depth - 1, 1 - beta);
+            self.board.unmake_move();
+
+            if eval >= beta {
+                return beta;
+            }
+        }
+
+        beta - 1
+    }
+
+    fn qsearch(&mut self, depth: i16, mut alpha: Score, beta: Score) -> Score {
+        if let Some(score) = self.break_conditions(depth, alpha, beta) {
+            return score;
+        }
+
+        let side = self.board.side_to_move();
+        let multiplier = side.choose(1, -1);
+
+        self.nodes += 1;
+
+        let score = eval::evaluate(&self.board) * multiplier;
+
+        if score >= beta {
+            return beta;
+        }
+
+        if score > alpha {
+            alpha = score;
+        }
+
+        let moves = self.get_moves::<CAPTURES_ONLY>();
+        let mut best = NULL_MOVE;
+        let mut found_exact = false;
+
+        for capture in moves {
+            self.board.make_move(capture);
+            let score = -self.qsearch(depth - 1, -beta, -alpha);
+            self.board.unmake_move();
+
+            if self.time_hit {
+                return 0;
+            }
+
+            if score >= beta {
+                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), capture);
                 return beta;
             }
 
             if score > alpha {
                 alpha = score;
+                best = capture;
+                found_exact = true;
             }
-
-            let moves = self.get_moves::<true>();
-            let mut best = NULL_MOVE;
-            let mut found_exact = false;
-
-            for capture in moves {
-                self.make_move(capture);
-                let score = -self.qsearch(context, depth - 1, -beta, -alpha);
-                self.unmake_move();
-
-                if context.time_hit {
-                    return 0;
-                }
-
-                if score >= beta {
-                    self.transpositions.set(self.key(), depth, Score::LowerBound(beta), capture);
-                    return beta;
-                }
-
-                if score > alpha {
-                    alpha = score;
-                    best = capture;
-                    found_exact = true;
-                }
-            }
-
-            if best != NULL_MOVE {
-                self.transpositions.set(self.key(), depth, Score::from_alpha(alpha, found_exact), best);
-                context.seldepth = max(context.seldepth, context.depth - depth);
-            }
-
-            alpha
         }
+
+        if best != NULL_MOVE {
+            self.transpositions.set(self.board.key(), depth, TableScore::from_alpha(alpha, found_exact), best);
+            self.seldepth = max(self.seldepth, self.depth - depth);
+        }
+
+        alpha
     }
 }

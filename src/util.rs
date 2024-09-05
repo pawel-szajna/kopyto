@@ -1,4 +1,5 @@
 use std::str::Chars;
+use crate::search::Score;
 use crate::types::Square;
 
 #[allow(dead_code)]
@@ -78,7 +79,7 @@ pub fn str_to_idx(pos: &str) -> Square {
     Square::from_coords(file, rank)
 }
 
-pub fn eval_to_str(eval: i64) -> String {
+pub fn eval_to_str(eval: Score) -> String {
     if eval.abs() > 9000 {
         format!("mate {}", eval.signum() * (1 + (10000 - eval.abs())) / 2)
     } else {

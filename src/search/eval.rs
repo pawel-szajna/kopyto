@@ -1,9 +1,13 @@
 use crate::board::Board;
 use crate::types::{Bitboard, Side};
 
+pub type Score = i16;
+
 mod weights {
-    type Weights = [i64; 64];
-    type WeightsPerSide = [Weights; 2];
+    use super::*;
+
+    pub type Weights = [Score; 64];
+    pub type WeightsPerSide = [Weights; 2];
 
     const PAWN_BASE: Weights = [
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -96,10 +100,10 @@ mod weights {
     pub const QUEEN: WeightsPerSide = double_weights!(QUEEN_BASE);
 }
 
-pub fn evaluate(board: &Board) -> i64 {
-    let mut score = 0i64;
+pub fn evaluate(board: &Board) -> Score {
+    let mut score = 0;
 
-    for (side, modifier) in [(Side::White, 1i64), (Side::Black, -1i64)] {
+    for (side, modifier) in [(Side::White, 1), (Side::Black, -1)] {
         score += modifier * eval_piece(board.kings[side], 0, &weights::KING[side]);
         score += modifier * eval_piece(board.pawns[side], 100, &weights::PAWN[side]);
         score += modifier * eval_piece(board.knights[side], 300, &weights::KNIGHT[side]);
@@ -111,7 +115,7 @@ pub fn evaluate(board: &Board) -> i64 {
     score
 }
 
-fn eval_piece(mask: Bitboard, value: i64, weights: &[i64; 64]) -> i64 {
+fn eval_piece(mask: Bitboard, value: Score, weights: &weights::Weights) -> Score {
     let mut score = 0;
     for pos in mask {
         score += value + weights[pos];
