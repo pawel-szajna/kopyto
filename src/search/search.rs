@@ -117,24 +117,29 @@ impl Searcher {
     }
 
     fn calculate_target_time(&self, options: &Options) -> u128 {
+        if let Some(requested_time) = options.target_time {
+            return requested_time as u128 - 100;
+        }
+
         let side = self.board.side_to_move();
         let our_time = side.choose(options.white_time, options.black_time);
-        let opponent_time = !side.choose(options.white_time, options.black_time);
+        let opponent_time = (!side).choose(options.white_time, options.black_time);
         let time_advantage = our_time - opponent_time;
         let time_advantage_modifier = if time_advantage > 0 { time_advantage / 4 } else { time_advantage / 8 };
+        let divider = match self.board.full_moves_count {
+            m if m < 2 => 60,
+            m if m < 4 => 25,
+            m if m < 6 => 12,
+            _ => 8,
+        };
 
-        match options.target_time {
-            Some(target_time) => target_time as u128 - 100,
-            None => {
-                let divider = match self.board.full_moves_count {
-                    m if m < 2 => 60,
-                    m if m < 4 => 25,
-                    m if m < 6 => 12,
-                    _ => 8,
-                };
-                (our_time / divider + max(0, time_advantage_modifier)) as u128
-            },
-        }
+        let result = (our_time / divider + max(0, time_advantage_modifier)) as u128;
+
+        println!(
+            "info string our time: {} opponent time: {} time advantage: {} advantage modifier: {} moves count: {} divider: {} target time: {}",
+            our_time, opponent_time, time_advantage, time_advantage_modifier, self.board.full_moves_count, divider, result);
+
+        result
     }
 
     fn get_book_move(&self) -> Option<Move> {
