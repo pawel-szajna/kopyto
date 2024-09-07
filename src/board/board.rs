@@ -4,6 +4,8 @@ use crate::types::{Bitboard, Move, Piece, Side};
 
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
+pub type PieceList = [Option<Piece>; 64];
+pub type ColorPieceList = [PieceList; 2];
 
 #[derive(Clone)]
 struct History {
@@ -58,6 +60,7 @@ pub struct Board {
     pub bishops: ColorBitboard,
     pub knights: ColorBitboard,
     pub pawns: ColorBitboard,
+    pub pieces: ColorPieceList,
 
     pub occupied: ColorBitboard,
     pub any_piece: Bitboard,
@@ -89,6 +92,7 @@ impl Board {
             bishops: [Bitboard::EMPTY, Bitboard::EMPTY],
             knights: [Bitboard::EMPTY, Bitboard::EMPTY],
             pawns: [Bitboard::EMPTY, Bitboard::EMPTY],
+            pieces: [[None; 64]; 2],
 
             occupied: [Bitboard::EMPTY, Bitboard::EMPTY],
             any_piece: Bitboard::EMPTY,
@@ -153,31 +157,37 @@ impl Board {
     pub fn put_king(&mut self, side: Side, mask: Bitboard) {
         self.kings[side] |= mask;
         self.put_piece_occupancy(side, mask);
+        self.pieces[side][mask.peek()] = Some(Piece::King);
     }
 
     pub fn put_queen(&mut self, side: Side, mask: Bitboard) {
         self.queens[side] |= mask;
         self.put_piece_occupancy(side, mask);
+        self.pieces[side][mask.peek()] = Some(Piece::Queen);
     }
 
     pub fn put_rook(&mut self, side: Side, mask: Bitboard) {
         self.rooks[side] |= mask;
         self.put_piece_occupancy(side, mask);
+        self.pieces[side][mask.peek()] = Some(Piece::Rook);
     }
 
     pub fn put_bishop(&mut self, side: Side, mask: Bitboard) {
         self.bishops[side] |= mask;
         self.put_piece_occupancy(side, mask);
+        self.pieces[side][mask.peek()] = Some(Piece::Bishop);
     }
 
     pub fn put_knight(&mut self, side: Side, mask: Bitboard) {
         self.knights[side] |= mask;
         self.put_piece_occupancy(side, mask);
+        self.pieces[side][mask.peek()] = Some(Piece::Knight);
     }
 
     pub fn put_pawn(&mut self, side: Side, mask: Bitboard) {
         self.pawns[side] |= mask;
         self.put_piece_occupancy(side, mask);
+        self.pieces[side][mask.peek()] = Some(Piece::Pawn);
     }
 
     fn put_piece(&mut self, side: Side, mask: Bitboard, piece: Piece) {
@@ -191,17 +201,19 @@ impl Board {
         }
     }
 
-    fn remove_piece(&mut self, mask: Bitboard) {
-        self.any_piece &= !mask;
-        for side in [Side::White, Side::Black] {
-            self.occupied[side] &= !mask;
-            self.kings[side] &= !mask;
-            self.queens[side] &= !mask;
-            self.rooks[side] &= !mask;
-            self.bishops[side] &= !mask;
-            self.knights[side] &= !mask;
-            self.pawns[side] &= !mask;
+    fn remove_piece(&mut self, side: Side, mask: Bitboard) {
+        let idx = mask.peek();
+        self.any_piece ^= mask;
+        self.occupied[side] ^= mask;
+        match unsafe { self.pieces[side][idx].unwrap_unchecked() } {
+            Piece::King => self.kings[side] ^= mask,
+            Piece::Queen => self.queens[side] ^= mask,
+            Piece::Rook => self.rooks[side] ^= mask,
+            Piece::Bishop => self.bishops[side] ^= mask,
+            Piece::Knight => self.knights[side] ^= mask,
+            Piece::Pawn => self.pawns[side] ^= mask,
         }
+        self.pieces[side][idx] = None;
     }
 
     pub fn has_piece(&self, mask: Bitboard) -> bool {
@@ -247,35 +259,7 @@ impl Board {
     }
 
     pub fn check_piece(&self, side: Side, mask: Bitboard) -> Option<Piece> {
-        if !self.has_piece(mask) || (self.occupied[side] & mask).empty() {
-            return None;
-        }
-
-        if (self.kings[side] & mask).not_empty() {
-            return Some(Piece::King);
-        }
-
-        if (self.queens[side] & mask).not_empty() {
-            return Some(Piece::Queen);
-        }
-
-        if (self.rooks[side] & mask).not_empty() {
-            return Some(Piece::Rook);
-        }
-
-        if (self.bishops[side] & mask).not_empty() {
-            return Some(Piece::Bishop);
-        }
-
-        if (self.knights[side] & mask).not_empty() {
-            return Some(Piece::Knight);
-        }
-
-        if (self.pawns[side] & mask).not_empty() {
-            return Some(Piece::Pawn);
-        }
-
-        panic!("Internal error: there should be something on {:066b}", mask);
+        self.pieces[side][mask.peek()]
     }
 
     pub fn key(&self) -> u64 {
@@ -324,10 +308,10 @@ impl Board {
 
         if self.has_piece(to_mask) {
             history_entry.capture = self.check_piece(opponent, to_mask);
-            self.remove_piece(to_mask);
+            self.remove_piece(opponent, to_mask);
         }
 
-        let mut piece_type = self.check_piece(side, from_mask).unwrap();
+        let mut piece_type = unsafe { self.check_piece(side, from_mask).unwrap_unchecked() };
 
         if piece_type == Piece::Rook {
             if self.castle_queenside[side] && from_mask == masks::ROOK_QUEENSIDE[side] {
@@ -339,10 +323,10 @@ impl Board {
 
         if piece_type == Piece::King {
             if to_mask == masks::CASTLE_KINGSIDE[side] && self.castle_kingside[side] {
-                self.remove_piece(masks::ROOK_KINGSIDE[side]);
+                self.remove_piece(side, masks::ROOK_KINGSIDE[side]);
                 self.put_piece(side, masks::ROOK_CASTLED_KINGSIDE[side], Piece::Rook);
             } else if to_mask == masks::CASTLE_QUEENSIDE[side] && self.castle_queenside[side] {
-                self.remove_piece(masks::ROOK_QUEENSIDE[side]);
+                self.remove_piece(side, masks::ROOK_QUEENSIDE[side]);
                 self.put_piece(side, masks::ROOK_CASTLED_QUEENSIDE[side], Piece::Rook);
             }
             self.castle_queenside[side] = false;
@@ -361,7 +345,7 @@ impl Board {
         }
 
         if piece_type == Piece::Pawn && to_mask == self.en_passant {
-            self.remove_piece(match side {
+            self.remove_piece(opponent, match side {
                 Side::White => to_mask >> 8,
                 Side::Black => to_mask << 8,
             });
@@ -381,7 +365,7 @@ impl Board {
         }
 
         self.put_piece(side, to_mask, piece_type);
-        self.remove_piece(from_mask);
+        self.remove_piece(side, from_mask);
 
         self.current_color = opponent;
 
@@ -404,7 +388,7 @@ impl Board {
             panic!("Cannot unmake move with no moves");
         }
 
-        let last_move = self.history.pop().unwrap();
+        let last_move = unsafe { self.history.pop().unwrap_unchecked() };
         let side = self.check_side(last_move.to);
         let opponent = !side;
 
@@ -413,7 +397,7 @@ impl Board {
             && last_move.to == masks::CASTLE_KINGSIDE[side]
             && self.check_piece(side, masks::CASTLE_KINGSIDE[side]) == Some(Piece::King)
         {
-            self.remove_piece(masks::ROOK_CASTLED_KINGSIDE[side]);
+            self.remove_piece(side, masks::ROOK_CASTLED_KINGSIDE[side]);
             self.put_piece(side, masks::ROOK_KINGSIDE[side], Piece::Rook);
         }
         if self.castle_queenside[side] != last_move.castle_queenside[side]
@@ -421,14 +405,14 @@ impl Board {
             && last_move.to == masks::CASTLE_QUEENSIDE[side]
             && self.check_piece(side, masks::CASTLE_QUEENSIDE[side]) == Some(Piece::King)
         {
-            self.remove_piece(masks::ROOK_CASTLED_QUEENSIDE[side]);
+            self.remove_piece(side, masks::ROOK_CASTLED_QUEENSIDE[side]);
             self.put_piece(side, masks::ROOK_QUEENSIDE[side], Piece::Rook);
         }
 
         self.castle_kingside = last_move.castle_kingside;
         self.castle_queenside = last_move.castle_queenside;
 
-        let mut piece_type = self.check_piece(side, last_move.to).unwrap();
+        let mut piece_type = unsafe {self.check_piece(side, last_move.to).unwrap_unchecked() };
 
         if last_move.promotion {
             piece_type = Piece::Pawn;
@@ -446,11 +430,11 @@ impl Board {
             );
         }
 
-        self.remove_piece(last_move.to);
+        self.remove_piece(side, last_move.to);
         self.put_piece(side, last_move.from, piece_type);
 
         if last_move.capture.is_some() {
-            self.put_piece(opponent, last_move.to, last_move.capture.unwrap());
+            self.put_piece(opponent, last_move.to, unsafe { last_move.capture.unwrap_unchecked() });
         }
 
         self.current_color = side;

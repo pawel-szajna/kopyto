@@ -7,3 +7,5 @@ mod search;
 pub use options::Options;
 pub use search::Searcher;
 pub use eval::Score;
+pub use eval::Verbosity;
+pub use eval::evaluate;

@@ -7,7 +7,7 @@ use crate::board::{Board, FenProducer};
 use crate::moves_generation;
 use crate::moves_generation::MoveList;
 use crate::search::checks::Checks;
-use crate::search::eval::Score;
+use crate::search::eval::{Score, Verbosity};
 use crate::search::{book, eval, Options};
 use crate::transpositions::{TableScore, Transpositions};
 use crate::types::Move;
@@ -138,6 +138,7 @@ impl Searcher {
     }
 
     fn get_book_move(&self) -> Option<Move> {
+        // return None;
         // TODO: book should be opt-in, not default
         if let Some(book_moves) = book::BOOK.search(self.board.current_color, self.board.full_moves_count, self.board.key()) {
             let mut legal_moves = moves_generation::generate_all(&self.board);
@@ -360,7 +361,7 @@ impl Searcher {
 
         self.nodes += 1;
 
-        let score = eval::evaluate(&self.board) * multiplier;
+        let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
 
         if score >= beta {
             return beta;

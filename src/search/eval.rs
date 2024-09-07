@@ -1,124 +1,389 @@
 use crate::board::Board;
-use crate::types::{Bitboard, Side};
+use crate::search::eval::weights::SIDE_STARTING_MATERIAL;
+use crate::types::{Piece, Side};
 
 pub type Score = i16;
 
 mod weights {
+    use std::ops::Index;
     use super::*;
 
+    pub type PieceTable = [Score; 5];
+
+    const fn acquire(pt: &PieceTable, piece: Piece) -> &Score {
+        match piece {
+            Piece::King => &0,
+            Piece::Pawn => &pt[0],
+            Piece::Knight => &pt[1],
+            Piece::Bishop => &pt[2],
+            Piece::Rook => &pt[3],
+            Piece::Queen => &pt[4],
+        }
+    }
+
+    impl Index<Piece> for PieceTable {
+        type Output = Score;
+
+        fn index(&self, index: Piece) -> &Self::Output {
+            acquire(self, index)
+        }
+    }
+
+    pub const BASE_SCORES: PieceTable = [50, 300, 320, 500, 900];
+    pub const END_SCORES: PieceTable = [80, 300, 320, 500, 900];
+
+    pub const SIDE_STARTING_MATERIAL: Score =
+        *acquire(&BASE_SCORES, Piece::Knight) * 2 +
+        *acquire(&BASE_SCORES, Piece::Bishop) * 2 +
+        *acquire(&BASE_SCORES, Piece::Rook) * 2 +
+        *acquire(&BASE_SCORES, Piece::Queen);
+
+    pub type HalfWeights = [Score; 32];
     pub type Weights = [Score; 64];
     pub type WeightsPerSide = [Weights; 2];
 
+    pub struct WeightSet {
+        pub base: PieceTable,
+        pub pawn: WeightsPerSide,
+        pub knight: WeightsPerSide,
+        pub bishop: WeightsPerSide,
+        pub rook: WeightsPerSide,
+        pub queen: WeightsPerSide,
+        pub king: WeightsPerSide,
+    }
+
+    impl Index<Piece> for WeightSet {
+        type Output = WeightsPerSide;
+
+        fn index(&self, index: Piece) -> &Self::Output {
+            match index {
+                Piece::Pawn => &self.pawn,
+                Piece::Knight => &self.knight,
+                Piece::Bishop => &self.bishop,
+                Piece::Rook => &self.rook,
+                Piece::Queen => &self.queen,
+                Piece::King => &self.king,
+            }
+        }
+    }
+
     const PAWN_BASE: Weights = [
-        0, 0, 0, 0, 0, 0, 0, 0,
-        25, 35, 30, 25, 25, 30, 35, 25,
-        20, 30, 22, 24, 24, 22, 30, 20,
-        10, 10, 20, 35, 35, 20, 10, 10,
-        5, 5, 15, 36, 36, 15, 5, 5,
-        4, 5, 10, 14, 14, 10, 5, 4,
-        0, 0, 0, -4, -4, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
+         0,   0,   0,   0,   0,   0,   0,   0,
+        -3,   3,  -1,  -6,   2,  -8,   5,  -4,
+         2,  -6,  -3,  11,  -4,  -2,  -8,  -4,
+         6,   0,  -6,   0,   5,  -1,  -6,   5,
+        -2, -12,   3,  10,  20,   8,   2,  -4,
+        -4,  -8,   6,   7,  16,  10,   2, -11,
+         1,   1,   5,   9,   8,   9,   3,  -2,
+         0,   0,   0,   0,   0,   0,   0,   0,
     ];
 
-    const KNIGHT_BASE: Weights = [
-        -100, -84, -75, -70, -70, -75, -84, -100,
-        -82, -45, -5, -5, -5, -5, -48, -82,
-        -76, -24, 16, 32, 32, 16, -24, -76,
-        -72, 0, 32, 48, 48, 32, 0, -72,
-        -72, 0, 32, 48, 48, 32, 0, -72,
-        -74, -2, 26, 24, 24, 26, -2, -74,
-        -80, -16, 0, 4, 4, 0, -16, -80,
-        -100, -12, -24, -48, -48, -24, -12, -100
+    const PAWN_END: Weights = [
+         0,   0,   0,   0,   0,   0,   0,   0,
+         0,  -5,   6,  10,  13,   9,   2,   3,
+        14,  10,  11,  14,  15,   3,   3,   6,
+         5,   2,   2,  -2,  -2,  -2,   7,   5,
+         3,  -1,  -4,  -2,  -6,  -6,  -5,  -4,
+        -5,  -5,  -5,   2,   2,   1,  -3,  -2,
+        -5,  -3,   5,   0,   7,   3,  -2,  -9,
+         0,   0,   0,   0,   0,   0,   0,   0,
     ];
 
-    const KING_BASE: Weights = [
-        -88, -88, -88, -88, -88, -88, -88, -88,
-        -77, -77, -77, -77, -77, -77, -77, -77,
-        -62, -62, -62, -62, -62, -62, -62, -62,
-        -44, -44, -44, -44, -44, -44, -44, -44,
-        -17, -19, -23, -36, -33, -23, -19, -17,
-        -8, -8, -19, -29, -27, -17, -8, -8,
-        0, 1, -2, -60, -50, -8, 5, 4,
-        -8, 48, 20, -55, 10, -20, 44, 17
+    const KNIGHT_BASE: HalfWeights = [
+        -77, -32, -22, -10,
+        -26, -10,   2,  14,
+         -3,   8,  22,  21,
+        -13,   5,  17,  20,
+        -13,   3,  15,  19,
+        -23,  -7,   2,   5,
+        -30, -16, -10,  -6,
+        -67, -35, -28, -28,
     ];
 
-    const BISHOP_BASE: Weights = [
-        -29, 4, -82, -37, -25, -42, 7, -8,
-        -26, 16, -18, -13, 30, 59, 18, -47,
-        -16, 37, 43, 40, 35, 50, 37, -2,
-        -4, 5, 19, 50, 37, 37, 7, -2,
-        -6, 13, 13, 26, 34, 12, 10, 4,
-        0, 15, 15, 15, 14, 27, 18, 10,
-        4, 15, 16, 0, 7, 21, 33, 1,
-        -33, -3, -14, -21, -13, -12, -39, -21,
+    const KNIGHT_END: HalfWeights = [
+        -35, -31, -20,  -6,
+        -24, -18, -18,   4,
+        -18, -15,  -6,   6,
+        -16,  -6,   3,  13,
+        -12,  -1,   5,  35,
+        -14,  -9,  -3,  10,
+        -24, -19,  -6,   3,
+        -34, -22, -17,  -7,
     ];
 
-    const ROOK_BASE: Weights = [
-        32, 42, 32, 51, 63, 9, 31, 43,
-        27, 32, 58, 62, 80, 67, 26, 44,
-        -5, 19, 26, 36, 17, 45, 61, 16,
-        -24, -11, 7, 26, 24, 35, -8, -20,
-        -36, -26, -12, -1, 9, -7, 6, -23,
-        -45, -25, -16, -17, 3, 0, -5, -33,
-        -44, -16, -20, -9, -1, 11, -6, -71,
-        -19, -13, 1, 17, 16, 7, -37, -26,
+    const KING_BASE: HalfWeights = [
+         23,  35,  18,   0,
+         35,  48,  26,  13,
+         49,  58,  32,  12,
+         61,  72,  42,  28,
+         66,  76,  55,  39,
+         78, 103,  67,  48,
+        110, 120,  93,  71,
+        110, 130, 110,  80,
     ];
 
-    const QUEEN_BASE: Weights = [
-        -28, 0, 29, 12, 59, 44, 43, 45,
-        -24, -39, -5, 1, -16, 57, 28, 54,
-        -13, -17, 7, 8, 29, 56, 47, 57,
-        -27, -27, -16, -16, -1, 17, -2, 1,
-        -9, -26, -9, -10, -2, -4, 3, -3,
-        -14, 2, -11, -2, -5, 2, 14, 5,
-        -35, -8, 11, 2, 8, 15, -3, 1,
-        -1, -18, -9, 10, -15, -25, -31, -50,
+    const KING_END: HalfWeights = [
+          5,  24,  30,  32,
+         19,  48,  46,  52,
+         36,  68,  74,  76,
+         39,  67,  80,  80,
+         41,  62,  68,  68,
+         35,  52,  67,  70,
+         21,  40,  53,  54,
+          0,  18,  34,  30,
     ];
+
+    const BISHOP_BASE: HalfWeights = [
+        -19,   0,  -5,  -9,
+         -7,  -5,   2,   0,
+         -6,   2,   0,   4,
+         -5,  11,   8,  12,
+         -2,   4,   9,  15,
+         -3,   8,  -2,  -7,
+         -6,   3,   7,   2,
+        -21,  -2,  -3,  -9,
+    ];
+
+    const BISHOP_END: HalfWeights = [
+        -16, -14, -12,  -8,
+        -10,  -7,  -1,   0,
+        -10,   2,   1,   2,
+         -6,   0,  -5,   6,
+         -7,  -2,   0,   6,
+         -5,   0,  -1,   4,
+        -13,  -5,  -6,   0,
+        -20, -11, -13,  -4,
+    ];
+
+    const ROOK_BASE: HalfWeights = [
+         -7,  -8,   0,   4,
+          0,   5,   6,   7,
+         -9,  -1,   2,   5,
+        -11,  -6,  -2,   1,
+         -5,  -2,  -1,  -2,
+        -10,  -4,   0,   1,
+         -8,  -5,  -3,   2,
+        -31,  -8,  -5,  -2,
+    ];
+
+    const ROOK_END: HalfWeights = [
+          7,   0,   7,   5,
+          1,   2,   7,  -2,
+          2,   0,  -2,   4,
+         -1,   3,   3,  -2,
+         -2,   0,  -3,   3,
+          2,  -3,  -1,  -2,
+         -4,  -3,   0,  -1,
+         -3,  -5,  -4,  -3,
+    ];
+
+    const QUEEN_BASE: HalfWeights = [
+         -1,  -1,   0,  -1,
+         -2,   2,   4,   3,
+         -1,   4,   2,   3,
+          0,   5,   4,   2,
+          1,   2,   3,   3,
+         -1,   2,   5,   2,
+         -1,   2,   3,   4,
+          1,  -2,  -2,   1,
+    ];
+
+    const QUEEN_END: HalfWeights = [
+        -25, -17, -14, -12,
+        -17,  -9,  -8,  -3,
+        -13,  -6,  -4,   0,
+        -10,  -2,   3,   7,
+         -8,  -1,   4,   8,
+        -13,  -6,  -3,   1,
+        -18, -10,  -7,  -1,
+        -23, -19, -15,  -9,
+    ];
+
+    macro_rules! mirror_weights {
+        ($x:ident) => {[
+            $x[0 + 0], $x[0 + 1], $x[0 + 2], $x[0 + 3], $x[0 + 3], $x[0 + 2], $x[0 + 1], $x[0 + 0],
+            $x[4 + 0], $x[4 + 1], $x[4 + 2], $x[4 + 3], $x[4 + 3], $x[4 + 2], $x[4 + 1], $x[4 + 0],
+            $x[8 + 0], $x[8 + 1], $x[8 + 2], $x[8 + 3], $x[8 + 3], $x[8 + 2], $x[8 + 1], $x[8 + 0],
+            $x[12 + 0], $x[12 + 1], $x[12 + 2], $x[12 + 3], $x[12 + 3], $x[12 + 2], $x[12 + 1], $x[12 + 0],
+            $x[16 + 0], $x[16 + 1], $x[16 + 2], $x[16 + 3], $x[16 + 3], $x[16 + 2], $x[16 + 1], $x[16 + 0],
+            $x[20 + 0], $x[20 + 1], $x[20 + 2], $x[20 + 3], $x[20 + 3], $x[20 + 2], $x[20 + 1], $x[20 + 0],
+            $x[24 + 0], $x[24 + 1], $x[24 + 2], $x[24 + 3], $x[24 + 3], $x[24 + 2], $x[24 + 1], $x[24 + 0],
+            $x[28 + 0], $x[28 + 1], $x[28 + 2], $x[28 + 3], $x[28 + 3], $x[28 + 2], $x[28 + 1], $x[28 + 0],
+        ]};
+    }
 
     macro_rules! rev_weights {
-    ($x:ident) => { [
-        $x[56 + 0], $x[56 + 1], $x[56 + 2], $x[56 + 3], $x[56 + 4], $x[56 + 5], $x[56 + 6], $x[56 + 7],
-        $x[48 + 0], $x[48 + 1], $x[48 + 2], $x[48 + 3], $x[48 + 4], $x[48 + 5], $x[48 + 6], $x[48 + 7],
-        $x[40 + 0], $x[40 + 1], $x[40 + 2], $x[40 + 3], $x[40 + 4], $x[40 + 5], $x[40 + 6], $x[40 + 7],
-        $x[32 + 0], $x[32 + 1], $x[32 + 2], $x[32 + 3], $x[32 + 4], $x[32 + 5], $x[32 + 6], $x[32 + 7],
-        $x[24 + 0], $x[24 + 1], $x[24 + 2], $x[24 + 3], $x[24 + 4], $x[24 + 5], $x[24 + 6], $x[24 + 7],
-        $x[16 + 0], $x[16 + 1], $x[16 + 2], $x[16 + 3], $x[16 + 4], $x[16 + 5], $x[16 + 6], $x[16 + 7],
-        $x[8 + 0], $x[8 + 1], $x[8 + 2], $x[8 + 3], $x[8 + 4], $x[8 + 5], $x[8 + 6], $x[8 + 7],
-        $x[0 + 0], $x[0 + 1], $x[0 + 2], $x[0 + 3], $x[0 + 4], $x[0 + 5], $x[0 + 6], $x[0 + 7],
-    ]};
-}
+        ($x:expr) => { [
+            $x[56 + 0], $x[56 + 1], $x[56 + 2], $x[56 + 3], $x[56 + 4], $x[56 + 5], $x[56 + 6], $x[56 + 7],
+            $x[48 + 0], $x[48 + 1], $x[48 + 2], $x[48 + 3], $x[48 + 4], $x[48 + 5], $x[48 + 6], $x[48 + 7],
+            $x[40 + 0], $x[40 + 1], $x[40 + 2], $x[40 + 3], $x[40 + 4], $x[40 + 5], $x[40 + 6], $x[40 + 7],
+            $x[32 + 0], $x[32 + 1], $x[32 + 2], $x[32 + 3], $x[32 + 4], $x[32 + 5], $x[32 + 6], $x[32 + 7],
+            $x[24 + 0], $x[24 + 1], $x[24 + 2], $x[24 + 3], $x[24 + 4], $x[24 + 5], $x[24 + 6], $x[24 + 7],
+            $x[16 + 0], $x[16 + 1], $x[16 + 2], $x[16 + 3], $x[16 + 4], $x[16 + 5], $x[16 + 6], $x[16 + 7],
+            $x[8 + 0], $x[8 + 1], $x[8 + 2], $x[8 + 3], $x[8 + 4], $x[8 + 5], $x[8 + 6], $x[8 + 7],
+            $x[0 + 0], $x[0 + 1], $x[0 + 2], $x[0 + 3], $x[0 + 4], $x[0 + 5], $x[0 + 6], $x[0 + 7],
+        ]};
+    }
 
     macro_rules! double_weights {
-    ($x:ident) => { [ rev_weights!($x), $x ] }
-}
-
-    pub const PAWN: WeightsPerSide = double_weights!(PAWN_BASE);
-    pub const KNIGHT: WeightsPerSide = double_weights!(KNIGHT_BASE);
-    pub const KING: WeightsPerSide = double_weights!(KING_BASE);
-    pub const BISHOP: WeightsPerSide = double_weights!(BISHOP_BASE);
-    pub const ROOK: WeightsPerSide = double_weights!(ROOK_BASE);
-    pub const QUEEN: WeightsPerSide = double_weights!(QUEEN_BASE);
-}
-
-pub fn evaluate(board: &Board) -> Score {
-    let mut score = 0;
-
-    for (side, modifier) in [(Side::White, 1), (Side::Black, -1)] {
-        score += modifier * eval_piece(board.kings[side], 0, &weights::KING[side]);
-        score += modifier * eval_piece(board.pawns[side], 100, &weights::PAWN[side]);
-        score += modifier * eval_piece(board.knights[side], 300, &weights::KNIGHT[side]);
-        score += modifier * eval_piece(board.bishops[side], 320, &weights::BISHOP[side]);
-        score += modifier * eval_piece(board.rooks[side], 500, &weights::ROOK[side]);
-        score += modifier * eval_piece(board.queens[side], 900, &weights::QUEEN[side]);
+        ($x:expr) => { [ rev_weights!($x), $x ] };
     }
 
-    score
+    macro_rules! construct_weights {
+        ($base:ident, $pawn:ident, $knight:ident, $bishop:ident, $rook:ident, $queen:ident, $king:ident) => {
+            WeightSet {
+                base: $base,
+                pawn: double_weights!($pawn),
+                knight: double_weights!(mirror_weights!($knight)),
+                bishop: double_weights!(mirror_weights!($bishop)),
+                rook: double_weights!(mirror_weights!($rook)),
+                queen: double_weights!(mirror_weights!($queen)),
+                king: double_weights!(mirror_weights!($king)),
+            }
+        };
+    }
+
+    pub const MID_GAME: WeightSet =
+        construct_weights!(BASE_SCORES, PAWN_BASE, KNIGHT_BASE, BISHOP_BASE, ROOK_BASE, QUEEN_BASE, KING_BASE);
+    pub const END_GAME: WeightSet =
+        construct_weights!(END_SCORES, PAWN_END, KNIGHT_END, BISHOP_END, ROOK_END, QUEEN_END, KING_END);
 }
 
-fn eval_piece(mask: Bitboard, value: Score, weights: &weights::Weights) -> Score {
-    let mut score = 0;
-    for pos in mask {
-        score += value + weights[pos];
+const SIDE_BONUS_VALUE: Score = 12;
+
+const fn lerp(phase: i32, a: Score, b: Score) -> Score {
+    ((a as i32 * (100 - phase) + b as i32 * phase) / 100) as i16
+}
+
+pub enum Verbosity {
+    Quiet,
+    Verbose,
+}
+
+pub fn evaluate(board: &Board, verbosity: Verbosity) -> Score {
+    match verbosity {
+        Verbosity::Quiet => Evaluator::<false>::new(board).evaluate(),
+        Verbosity::Verbose => Evaluator::<true>::new(board).evaluate(),
     }
-    score
+}
+
+struct Evaluator<'a, const VERBOSE: bool> {
+    board: &'a Board,
+    side_multiplier: Score,
+}
+
+fn multiplier(side: Side) -> Score {
+    match side {
+        Side::White => 1,
+        Side::Black => -1,
+    }
+}
+
+impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
+    pub fn new(board: &'a Board) -> Self {
+        Self {
+            board,
+            side_multiplier: multiplier(board.side_to_move()),
+        }
+    }
+
+    pub fn evaluate(&self) -> Score {
+        let score_middle = self.evaluate_middle();
+        let score_end = self.evaluate_end();
+
+        let endgame_weight = self.endgame_weight();
+        let phase_score = lerp(endgame_weight, score_middle, score_end);
+        let side_bonus = self.side_bonus();
+
+        if VERBOSE {
+            println!("score_middle: {}", score_middle);
+            println!("score_end: {}", score_end);
+            println!("endgame_weight: {}", endgame_weight);
+            println!("phase_score: {}", phase_score);
+            println!("side_bonus: {}", side_bonus);
+        }
+
+        phase_score + side_bonus
+    }
+
+    fn evaluate_middle(&self) -> Score {
+        let mut score = 0;
+        score += self.pieces_score_middle();
+        score
+    }
+
+    fn evaluate_end(&self) -> Score {
+        let mut score = 0;
+        score += self.pieces_score_end();
+        score
+    }
+
+    /// Estimate how much into the endgame we are. 0 is middle game, 100 is endgame
+    fn endgame_weight(&self) -> i32 {
+        let min_bound = 1000;
+        let max_bound = 2 * SIDE_STARTING_MATERIAL as i32 - min_bound;
+
+        let pieces_white = self.non_pawn_pieces_score(Side::White);
+        let pieces_black = self.non_pawn_pieces_score(Side::Black);
+
+        let pieces = ((pieces_white + pieces_black) as i32).clamp(min_bound, max_bound);
+
+        if VERBOSE {
+            println!("endgame_weight calculation");
+            println!("-- pieces_white: {}", pieces_white);
+            println!("-- pieces_black: {}", pieces_black);
+            println!("-- pieces: {}", pieces);
+            println!("-- min_bound: {}", min_bound);
+            println!("-- max_bound: {}", max_bound);
+        }
+
+        ((max_bound - pieces) * 100) / (max_bound - min_bound)
+    }
+
+    /// Tempo bonus for the side to move
+    fn side_bonus(&self) -> Score {
+        SIDE_BONUS_VALUE * self.side_multiplier
+    }
+
+    /// Pieces (non-pawns) base value, side-relative value
+    fn non_pawn_pieces_score(&self, side: Side) -> Score {
+        let mut score = 0;
+        for (&source, value) in [
+            (&self.board.knights[side], weights::BASE_SCORES[Piece::Knight]),
+            (&self.board.bishops[side], weights::BASE_SCORES[Piece::Bishop]),
+            (&self.board.rooks[side], weights::BASE_SCORES[Piece::Rook]),
+            (&self.board.queens[side], weights::BASE_SCORES[Piece::Queen]),
+        ] {
+            score += value * source.pieces() as i16;
+        }
+        score
+    }
+
+    fn pieces_score(&self, weight_set: &weights::WeightSet) -> Score {
+        let mut score = 0;
+        for side in [Side::White, Side::Black] {
+            let multiplier = multiplier(side);
+            for idx in self.board.occupied[side] {
+                let piece = unsafe { self.board.pieces[side][idx].unwrap_unchecked() };
+                score += multiplier * (weight_set.base[piece] + weight_set[piece][side][idx]);
+            }
+        }
+        score
+    }
+
+    /// Middle-game pieces score calculated from base pieces score and PSQT
+    fn pieces_score_middle(&self) -> Score {
+        if VERBOSE {
+            println!("calculating pieces_score_middle");
+        }
+        self.pieces_score(&weights::MID_GAME)
+    }
+
+    /// Endgame pieces score calculated from base pieces score and PSQT
+    fn pieces_score_end(&self) -> Score {
+        if VERBOSE {
+            println!("calculating pieces_score_end");
+        }
+        self.pieces_score(&weights::END_GAME)
+    }
 }

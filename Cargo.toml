@@ -9,3 +9,7 @@ edition = "2021"
 seq-macro = "0.3"
 rand = "0.8.5"
 scanner-rust = "=2.0.17"
+
+[profile.release]
+debug = true
+

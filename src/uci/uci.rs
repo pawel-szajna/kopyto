@@ -3,7 +3,7 @@ use crate::board::{Board, FenConsumer, FenProducer};
 use crate::types::Move;
 use crate::moves_generation::perft;
 use crate::search;
-use crate::search::Searcher;
+use crate::search::{Searcher, Verbosity};
 
 pub struct UCI {
     board: Board,
@@ -26,6 +26,7 @@ impl UCI {
                 "quit" => break,
                 "stop" => (),
                 "uci" => self.uci(),
+                "eval" => self.eval(),
                 "isready" => self.isready(),
                 "ucinewgame" => self.ucinewgame(),
                 "currentfen" => println!("{}", self.board.export_fen()),
@@ -143,5 +144,9 @@ impl UCI {
         let result = searcher.go(options);
 
         println!("bestmove {}", result.to_uci());
+    }
+
+    fn eval(&self) {
+        println!("{}", search::evaluate(&self.board, Verbosity::Verbose));
     }
 }
