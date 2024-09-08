@@ -183,7 +183,7 @@ impl Searcher {
             return Some(0);
         }
 
-        if let Some((score, _)) = self.transpositions.get(self.board.key(), depth, alpha, beta) {
+        if let Some(score) = self.transpositions.get(self.board.key(), depth, alpha, beta) {
             return Some(score);
         }
 
@@ -269,12 +269,12 @@ impl Searcher {
     }
 
     fn negamax(&mut self, depth: i16, mut alpha: Score, beta: Score) -> Score {
-        if let Some(score) = self.break_conditions(depth, alpha, beta) {
-            return score;
-        }
-
         if depth == 0 {
             return self.qsearch(0, alpha, beta);
+        }
+
+        if let Some(score) = self.break_conditions(depth, alpha, beta) {
+            return score;
         }
 
         self.nodes += 1;

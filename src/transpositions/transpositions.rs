@@ -48,16 +48,16 @@ impl Transpositions {
         }
     }
 
-    pub fn get(&self, hash: u64, depth: i16, alpha: Score, beta: Score) -> Option<(Score, Move)> {
+    pub fn get(&self, hash: u64, depth: i16, alpha: Score, beta: Score) -> Option<Score> {
         let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
         if entry.depth < depth || entry.hash != hash {
             return None;
         }
 
         match entry.score {
-            TableScore::Exact(score) => Some((score, entry.m)),
-            TableScore::LowerBound(score) if score <= alpha => Some((score, entry.m)),
-            TableScore::UpperBound(score) if score >= beta => Some((score, entry.m)),
+            TableScore::Exact(score) => Some(score),
+            TableScore::LowerBound(score) if score <= alpha => Some(score),
+            TableScore::UpperBound(score) if score >= beta => Some(score),
             _ => None,
         }
     }
