@@ -3,14 +3,14 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 use rand::Rng;
 use rand::seq::SliceRandom;
-use crate::board::{Board, FenProducer};
+use crate::board::{masks, Board, FenProducer};
 use crate::moves_generation;
 use crate::moves_generation::MoveList;
 use crate::search::checks::Checks;
 use crate::search::eval::{Score, Verbosity};
-use crate::search::{book, eval, Options};
+use crate::search::{book, eval, weights, Options};
 use crate::transpositions::{TableScore, Transpositions};
-use crate::types::{Bitboard, Move};
+use crate::types::{Bitboard, Move, Piece};
 
 const NULL_MOVE: Move = Move::new();
 const MAX_DEPTH: i16 = 64;
@@ -36,6 +36,7 @@ pub struct Searcher {
     nodes_n: u64,
     nodes_z: u64,
     nodes_q: u64,
+    delta_prunes: u64,
 
     clock_queries: usize,
     start_time: SystemTime,
@@ -62,6 +63,7 @@ impl Searcher {
             nodes_n: 0,
             nodes_z: 0,
             nodes_q: 0,
+            delta_prunes: 0,
 
             clock_queries: 0,
             start_time: SystemTime::now(),
@@ -92,7 +94,7 @@ impl Searcher {
     fn print_search_info(&mut self, current_depth: i16, score: Score, pv: &str) {
         let time = self.start_time.elapsed().unwrap();
         println!(
-            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {}",
+            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {} dprunes {}",
             current_depth,
             self.seldepth.max(current_depth),
             if score.abs() > 9000 {
@@ -109,6 +111,7 @@ impl Searcher {
             self.nodes_n,
             self.nodes_z,
             self.nodes_q,
+            self.delta_prunes,
         );
     }
 
@@ -213,12 +216,16 @@ impl Searcher {
         None
     }
 
+    fn checkmate_score(&self, depth: i16) -> Score {
+        -(10000 - (self.depth - depth))
+    }
+
     fn no_moves_conditions(&mut self, depth: i16, moves: &MoveList) -> Option<Score> {
         match moves.is_empty() {
             false => None,
             true => Some(match self.board.in_check(self.board.side_to_move()) {
                 false => 0, // stalemate
-                true => -(10000 - (self.depth - depth)), // checkmate in N
+                true => self.checkmate_score(depth), // checkmate in N
             })
         }
     }
@@ -444,6 +451,17 @@ impl Searcher {
         self.nodes_q += 1;
 
         let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
+
+        if self.board.in_checkmate() {
+            return self.checkmate_score(depth);
+        }
+
+        let delta_margin = weights::BASE_SCORES[Piece::Queen];
+
+        if score + delta_margin < alpha && !self.board.in_check(side) {
+            self.delta_prunes += 1;
+            return alpha;
+        }
 
         if score >= beta {
             return beta;
