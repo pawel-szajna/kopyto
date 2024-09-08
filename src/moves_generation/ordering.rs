@@ -6,12 +6,13 @@ type PieceValues = [Option<Piece>; 64];
 type MoveWeight = i32;
 pub type Weights = Vec<MoveWeight>;
 type KillerMoveSet = [Move; search::KILLER_MOVES_STORED];
+type HistorySet = [[u32; 64]; 64];
 
 const HASH_MOVE_VALUE: MoveWeight = MoveWeight::MAX - 1;
 const MVV_LVA_VALUE: MoveWeight = MoveWeight::MAX - 1024;
 const KILLER_MOVE_VALUE: MoveWeight = MoveWeight::MAX - 4096;
 
-pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_moves: &KillerMoveSet) -> Weights {
+pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_moves: &KillerMoveSet, history: &HistorySet) -> Weights {
     let side = board.side_to_move();
     let attacks = board.occupied[!side];
     let pieces = cache_piece_values(board, side, moves);
@@ -19,18 +20,18 @@ pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_m
     moves.iter().map(|m| {
         match hash_move {
             Some(hashed) if &hashed == m => HASH_MOVE_VALUE,
-            _ => mvv_lva(m, attacks, &pieces, killer_moves),
+            _ => mvv_lva(m, attacks, &pieces, killer_moves, history),
         }
     }).collect()
 }
 
-fn mvv_lva(m: &Move, attacks: Bitboard, pieces: &PieceValues, killer_moves: &KillerMoveSet) -> MoveWeight {
+fn mvv_lva(m: &Move, attacks: Bitboard, pieces: &PieceValues, killer_moves: &KillerMoveSet, history: &HistorySet) -> MoveWeight {
     let target_mask = Bitboard::from(m.get_to());
     match (target_mask & attacks).not_empty() {
         false => {
             match killer_moves.contains(m) {
                 true => KILLER_MOVE_VALUE,
-                false => 0,
+                false => history[m.get_from()][m.get_to()] as MoveWeight,
             }
         },
         true => {

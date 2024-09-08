@@ -29,6 +29,7 @@ pub struct Searcher {
     last_eval: Score,
     best_move: Move,
     killers: [[Move; KILLER_MOVES_STORED]; MAX_DEPTH as usize],
+    history: [[[u32; 64]; 64]; 2],
 
     nodes: u64,
 
@@ -50,6 +51,7 @@ impl Searcher {
             last_eval: 0,
             best_move: NULL_MOVE,
             killers: [[NULL_MOVE; KILLER_MOVES_STORED]; MAX_DEPTH as usize],
+            history: [[[0; 64]; 64]; 2],
 
             nodes: 0,
 
@@ -173,7 +175,8 @@ impl Searcher {
             &self.board,
             &moves,
             self.transpositions.get_move(self.board.key()),
-            &self.killers[if depth > 0 { depth } else { MAX_DEPTH - 1 } as usize]);
+            &self.killers[if depth > 0 { depth } else { MAX_DEPTH - 1 } as usize],
+            &self.history[self.board.side_to_move()]);
         MoveList::new(moves, weights)
     }
 
@@ -213,6 +216,14 @@ impl Searcher {
         }
 
         let depth = depth as usize;
+
+        let side = self.board.side_to_move();
+        let from = m.get_from();
+        let to = m.get_to();
+        let history_bonus = (depth as u32 * depth as u32).clamp(1, 16384);
+        let current_history = self.history[side][from][to];
+        let history_penalty = (current_history * history_bonus) / 16384;
+        self.history[side][from][to] += history_bonus - history_penalty;
 
         if self.killers[depth].contains(&m) {
             return;
