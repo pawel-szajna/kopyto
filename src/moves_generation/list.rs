@@ -18,7 +18,7 @@ pub struct MoveListIterator {
 }
 
 impl MoveList {
-    pub fn new(moves: Vec<Move>, weights: Vec<i64>) -> Self {
+    pub fn new(moves: Vec<Move>, weights: Weights) -> Self {
         assert_eq!(moves.len(), weights.len());
         Self {
             moves,
@@ -44,7 +44,7 @@ impl Iterator for MoveListIterator {
             return None;
         }
 
-        let mut max_value = i64::MIN;
+        let mut max_value = i32::MIN;
         let mut max_idx = 0;
         for i in self.used..self.list.moves.len() {
             let weight = self.list.weights[i];

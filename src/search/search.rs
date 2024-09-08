@@ -227,7 +227,7 @@ impl Searcher {
             return book_move;
         }
 
-        let target_depth = min(options.depth.unwrap_or(i16::MAX), MAX_DEPTH);
+        let target_depth = min(options.depth.unwrap_or(i16::MAX), MAX_DEPTH - 1);
         self.start_time = SystemTime::now();
         self.target_time = self.calculate_target_time(&options);
 
@@ -236,7 +236,7 @@ impl Searcher {
         let mut best_move = NULL_MOVE;
         let mut pv = String::new();
 
-        for current_depth in 1..target_depth {
+        for current_depth in 1..=target_depth {
             let iter_start = SystemTime::now();
             let last_eval = eval;
 
