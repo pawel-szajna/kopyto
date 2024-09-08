@@ -329,12 +329,12 @@ impl Searcher {
     }
 
     fn zero_window(&mut self, depth: i16, beta: Score) -> Score {
-        if let Some(score) = self.break_conditions(depth, beta - 1, beta) {
-            return score;
-        }
-
         if depth == 0 {
             return self.qsearch(0, beta - 1, beta);
+        }
+
+        if let Some(score) = self.break_conditions(depth, beta - 1, beta) {
+            return score;
         }
 
         self.nodes += 1;
