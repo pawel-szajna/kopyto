@@ -245,6 +245,15 @@ const OPENINGS_BLACK: &[&[&str]] = &[
     &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4", "g8f6" ],
     &[ "e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f1c4", "g8f6" ],
 
+    // Center game
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "d1d4", "b8c6", "d4d1", "g8f6" ],
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "d1d4", "b8c6", "d4d1", "f8c5" ],
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "d1d4", "b8c6", "d4e3", "g8f6" ], // Paulsen attack
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d7d5", "e4d5", "d8d5" ], // Danish gambit declined
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d4c3", "b1c3", "b8c6" ], // Danish gambit accepted
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d4c3", "b1c3", "f8b4" ],
+    &[ "e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d4c3", "f1c4", "c3b2" ],
+
     // Caro-Kann
     &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "g1f3", "e7e6" ], // Advance variation
     &[ "e2e4", "c7c6", "d2d4", "d7d5", "e4e5", "c8f5", "f1d3", "f5d3" ],
