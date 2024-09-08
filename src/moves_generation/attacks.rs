@@ -18,6 +18,10 @@ pub fn rook(idx: Square, occupied: Bitboard) -> Bitboard {
     Bitboard::from_u64(magics::ROOK_MAGICS.get(idx as usize, occupied))
 }
 
+pub fn queen(idx: Square, occupied: Bitboard) -> Bitboard {
+    bishop(idx, occupied) | rook(idx, occupied)
+}
+
 pub fn king(idx: Square) -> Bitboard {
     masks::KING_TARGETS[idx]
 }

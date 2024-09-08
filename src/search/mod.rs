@@ -3,6 +3,7 @@ mod checks;
 mod eval;
 mod options;
 mod search;
+mod weights;
 
 pub use options::Options;
 pub use search::Searcher;

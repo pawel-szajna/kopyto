@@ -63,6 +63,10 @@ impl Square {
     pub fn is_white(&self) -> bool {
         (*self as usize % 2) != ((*self as usize / 8) % 2)
     }
+
+    pub fn distance(&self, other: Square) -> usize {
+        self.file().abs_diff(other.file()) + self.rank().abs_diff(other.rank())
+    }
 }
 
 impl<T> Index<Square> for [T; 64] {
