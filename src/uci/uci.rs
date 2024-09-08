@@ -39,7 +39,7 @@ impl UCI {
 
     fn uci(&self) {
         println!("id name kopyto");
-        println!("id name szajnapawel@gmail.com");
+        println!("id author szajnapawel@gmail.com");
         println!("uciok");
     }
 
