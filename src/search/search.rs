@@ -10,7 +10,7 @@ use crate::search::checks::Checks;
 use crate::search::eval::{Score, Verbosity};
 use crate::search::{book, eval, weights, Options};
 use crate::transpositions::{TableScore, Transpositions};
-use crate::types::{Bitboard, Move, Piece};
+use crate::types::{Bitboard, Move, Piece, Side};
 
 const NULL_MOVE: Move = Move::new();
 const MAX_DEPTH: i16 = 64;
@@ -100,7 +100,10 @@ impl Searcher {
             if score.abs() > 9000 {
                 format!("mate {}", score.signum() * (1 + (10000 - score.abs())) / 2)
             } else {
-                format!("cp {}", score)
+                format!("cp {}", score * match self.board.side_to_move() {
+                    Side::White => 1,
+                    Side::Black => -1,
+                })
             },
             self.nodes,
             1000000000 * self.nodes as u128 / max(1, time.as_nanos()),
