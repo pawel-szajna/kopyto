@@ -32,6 +32,10 @@ pub struct Searcher {
     history: [[[u32; 64]; 64]; 2],
 
     nodes: u64,
+    tbhits: u64,
+    nodes_n: u64,
+    nodes_z: u64,
+    nodes_q: u64,
 
     clock_queries: usize,
     start_time: SystemTime,
@@ -54,6 +58,10 @@ impl Searcher {
             history: [[[0; 64]; 64]; 2],
 
             nodes: 0,
+            tbhits: 0,
+            nodes_n: 0,
+            nodes_z: 0,
+            nodes_q: 0,
 
             clock_queries: 0,
             start_time: SystemTime::now(),
@@ -84,9 +92,9 @@ impl Searcher {
     fn print_search_info(&mut self, current_depth: i16, score: Score, pv: &str) {
         let time = self.start_time.elapsed().unwrap();
         println!(
-            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} pv{}",
+            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {}",
             current_depth,
-            self.seldepth,
+            self.seldepth.max(current_depth),
             if score.abs() > 9000 {
                 format!("mate {}", score.signum() * (1 + (10000 - score.abs())) / 2)
             } else {
@@ -96,7 +104,11 @@ impl Searcher {
             1000000000 * self.nodes as u128 / max(1, time.as_nanos()),
             time.as_millis(),
             self.transpositions.usage(),
+            self.tbhits,
             pv,
+            self.nodes_n,
+            self.nodes_z,
+            self.nodes_q,
         );
     }
 
@@ -194,6 +206,7 @@ impl Searcher {
         }
 
         if let Some(score) = self.transpositions.get(self.board.key(), depth, alpha, beta) {
+            self.tbhits += 1;
             return Some(score);
         }
 
@@ -302,7 +315,7 @@ impl Searcher {
     }
 
     fn negamax(&mut self, depth: i16, mut alpha: Score, beta: Score) -> Score {
-        if depth == 0 {
+        if depth <= 0 {
             return self.qsearch(0, alpha, beta);
         }
 
@@ -311,6 +324,7 @@ impl Searcher {
         }
 
         self.nodes += 1;
+        self.nodes_n += 1;
         let moves = self.get_moves::<ALL_MOVES>(depth);
 
         if let Some(score) = self.no_moves_conditions(depth, &moves) {
@@ -363,7 +377,7 @@ impl Searcher {
     }
 
     fn zero_window(&mut self, depth: i16, beta: Score) -> Score {
-        if depth == 0 {
+        if depth <= 0 {
             return self.qsearch(0, beta - 1, beta);
         }
 
@@ -372,21 +386,35 @@ impl Searcher {
         }
 
         self.nodes += 1;
+        self.nodes_z += 1;
         let moves = self.get_moves::<ALL_MOVES>(depth);
 
         if let Some(score) = self.no_moves_conditions(depth, &moves) {
             return score;
         }
 
+        let mut move_counter = 0;
+
         for m in moves {
             self.board.make_move(m);
-            let eval = -self.zero_window(depth - 1, 1 - beta);
+
+            let mut next_depth = depth - 1;
+
+            // Late move reductions
+            let depth_from_root = self.depth - depth;
+            if depth_from_root > 2 && move_counter > 5 && !self.board.in_check(self.board.side_to_move()) {
+                next_depth -= if move_counter < 12 { 1 } else { 2 };
+            }
+
+            let eval = -self.zero_window(next_depth, 1 - beta);
             self.board.unmake_move();
 
             if eval >= beta {
                 self.store_killer(depth, m);
                 return beta;
             }
+
+            move_counter += 1;
         }
 
         beta - 1
@@ -401,6 +429,7 @@ impl Searcher {
         let multiplier = side.choose(1, -1);
 
         self.nodes += 1;
+        self.nodes_q += 1;
 
         let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
 
