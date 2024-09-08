@@ -349,7 +349,7 @@ impl Searcher {
             self.board.make_move(m.clone());
 
             let key = self.board.key();
-            let score = match found_exact {
+            let score = match move_counter > 0 {
                 false => -self.negamax(depth - 1, -beta, -alpha),
                 true => {
                     let mut next_depth = depth - 1;
