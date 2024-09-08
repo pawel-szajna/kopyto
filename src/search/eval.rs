@@ -30,6 +30,8 @@ struct Evaluator<'a, const VERBOSE: bool> {
     king_area: [Bitboard; 2],
     // king_area_attacks: [Score; 2],
     king_no_pawns_flank: [Score; 2],
+    doubled_pawns: [i16; 2],
+    isolated_pawns: [i16; 2],
 }
 
 fn multiplier(side: Side) -> Score {
@@ -75,8 +77,34 @@ fn create_king_area(board: &Board) -> [Bitboard; 2] {
     result
 }
 
+fn count_side_pawns(board: &Board, side: Side) -> [i16; 8] {
+    [0, 1, 2, 3, 4, 5, 6, 7]
+        .map(|file| (board.pawns[side] & masks::FILES[file]).pieces() as i16)
+}
+
+fn doubled_pawns(pawn_counts: &[i16; 8]) -> i16 {
+    pawn_counts
+        .iter()
+        .filter(|count| **count > 1)
+        .count() as i16
+}
+
+fn isolated_pawns(pawn_counts: &[i16; 8]) -> i16 {
+    let guarded_pawn_counts = [0, pawn_counts[0], pawn_counts[1], pawn_counts[2], pawn_counts[3], pawn_counts[4], pawn_counts[5], pawn_counts[6], pawn_counts[7], 0];
+    let mut count = 0;
+
+    for idx in 1..=8 {
+        if guarded_pawn_counts[idx - 1] == 0 && guarded_pawn_counts[idx + 1] == 0 {
+            count += 1;
+        }
+    }
+
+    count
+}
+
 impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
     pub fn new(board: &'a Board) -> Self {
+        let file_pawn_counts = [count_side_pawns(board, Side::White), count_side_pawns(board, Side::Black)];
         Self {
             board,
             side_multiplier: multiplier(board.side_to_move()),
@@ -84,6 +112,8 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
             king_area: [Bitboard::EMPTY; 2], // create_king_area(board),
             // king_area_attacks: [0; 2],
             king_no_pawns_flank: [0; 2],
+            doubled_pawns: [doubled_pawns(&file_pawn_counts[Side::White]), doubled_pawns(&file_pawn_counts[Side::Black])],
+            isolated_pawns: [isolated_pawns(&file_pawn_counts[Side::White]), isolated_pawns(&file_pawn_counts[Side::Black])],
         }
     }
 
@@ -113,6 +143,7 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
         let mut score = 0;
         score += self.pieces_score_middle();
         score += self.king_score_middle();
+        score += self.pawn_score_middle();
         score
     }
 
@@ -120,6 +151,7 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
         let mut score = 0;
         score += self.pieces_score_end();
         score += self.king_score_end();
+        score += self.pawn_score_end();
         score
     }
 
@@ -248,6 +280,36 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
 
             side_score -= self.king_distance_to_closest_pawn(king, side) * 5;
             side_score -= self.king_no_pawns_flank[side] * 30;
+
+            score += multiplier(side) * side_score;
+        }
+
+        score
+    }
+
+    fn pawn_score_middle(&self) -> Score {
+        let mut score = 0;
+
+        for side in [Side::White, Side::Black] {
+            let mut side_score = 0;
+
+            side_score -= self.doubled_pawns[side] * 5;
+            side_score -= self.isolated_pawns[side] * 4;
+
+            score += multiplier(side) * side_score;
+        }
+
+        score
+    }
+
+    fn pawn_score_end(&self) -> Score {
+        let mut score = 0;
+
+        for side in [Side::White, Side::Black] {
+            let mut side_score = 0;
+
+            side_score -= self.doubled_pawns[side] * 20;
+            side_score -= self.isolated_pawns[side] * 8;
 
             score += multiplier(side) * side_score;
         }
