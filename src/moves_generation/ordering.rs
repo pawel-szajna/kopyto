@@ -1,10 +1,12 @@
 use crate::board::Board;
+use crate::search;
 use crate::types::{Bitboard, Move, Piece, Side};
 
 type PieceValues = [Option<Piece>; 64];
 pub type Weights = Vec<i64>;
+type KillerMoveSet = [Move; search::KILLER_MOVES_STORED];
 
-pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_moves: &[Move; 2]) -> Weights {
+pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_moves: &KillerMoveSet) -> Weights {
     let side = board.side_to_move();
     let attacks = board.occupied[!side];
     let pieces = cache_piece_values(board, side, moves);
@@ -17,7 +19,7 @@ pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_m
     }).collect()
 }
 
-fn mvv_lva(m: &Move, attacks: Bitboard, pieces: &PieceValues, killer_moves: &[Move; 2]) -> i64 {
+fn mvv_lva(m: &Move, attacks: Bitboard, pieces: &PieceValues, killer_moves: &KillerMoveSet) -> i64 {
     let target_mask = Bitboard::from(m.get_to());
     match (target_mask & attacks).not_empty() {
         false => {

@@ -14,7 +14,7 @@ use crate::types::{Bitboard, Move};
 
 const NULL_MOVE: Move = Move::new();
 const MAX_DEPTH: i16 = 64;
-const KILLER_MOVES_STORED: usize = 2;
+pub const KILLER_MOVES_STORED: usize = 3;
 
 const ALL_MOVES: bool = false;
 const CAPTURES_ONLY: bool = true;
