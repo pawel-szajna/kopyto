@@ -223,6 +223,16 @@ impl Searcher {
         }
     }
 
+    fn late_move_reduction(&mut self, depth: i16, m: Move, move_counter: i32) -> i16 {
+        let depth_from_root = self.depth - depth;
+        if depth_from_root > 3 && move_counter > 4
+            && !self.killers[depth as usize].contains(&m)
+            && !self.board.in_check(self.board.side_to_move()) {
+            return if move_counter < 12 { 1 } else { 2 };
+        }
+        0
+    }
+
     fn store_killer(&mut self, depth: i16, m: Move) {
         if (self.board.any_piece & Bitboard::from(m.get_to())).not_empty() {
             return;
@@ -333,14 +343,19 @@ impl Searcher {
 
         let mut best = NULL_MOVE;
         let mut found_exact = false;
+        let mut move_counter = 0;
 
         for m in moves {
             self.board.make_move(m.clone());
+
             let key = self.board.key();
             let score = match found_exact {
                 false => -self.negamax(depth - 1, -beta, -alpha),
                 true => {
-                    let mut score = -self.zero_window(depth - 1, -alpha);
+                    let mut next_depth = depth - 1;
+                    next_depth -= self.late_move_reduction(depth, m, move_counter);
+
+                    let mut score = -self.zero_window(next_depth, -alpha);
                     if score > alpha {
                         score = -self.negamax(depth - 1, -beta, -alpha);
                     }
@@ -368,6 +383,8 @@ impl Searcher {
                     self.best_move = m;
                 }
             }
+
+            move_counter += 1;
         }
 
         self.transpositions.set(self.board.key(), depth, TableScore::from_alpha(alpha, found_exact), best);
@@ -399,12 +416,7 @@ impl Searcher {
             self.board.make_move(m);
 
             let mut next_depth = depth - 1;
-
-            // Late move reductions
-            let depth_from_root = self.depth - depth;
-            if depth_from_root > 2 && move_counter > 5 && !self.board.in_check(self.board.side_to_move()) {
-                next_depth -= if move_counter < 12 { 1 } else { 2 };
-            }
+            next_depth -= self.late_move_reduction(depth, m, move_counter);
 
             let eval = -self.zero_window(next_depth, 1 - beta);
             self.board.unmake_move();
