@@ -76,9 +76,8 @@ impl Searcher {
         }
     }
 
-    fn print_search_info(&mut self, current_depth: i16, score: Score) {
+    fn print_search_info(&mut self, current_depth: i16, score: Score, pv: &str) {
         let time = self.start_time.elapsed().unwrap();
-        let pv = self.get_pv(current_depth);
         println!(
             "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} pv{}",
             current_depth,
@@ -92,7 +91,7 @@ impl Searcher {
             1000000000 * self.nodes as u128 / max(1, time.as_nanos()),
             time.as_millis(),
             self.transpositions.usage(),
-            if pv.is_empty() { String::from(" ?") } else { pv },
+            pv,
         );
     }
 
@@ -213,6 +212,7 @@ impl Searcher {
         let mut eval = self.last_eval;
         let mut abs_eval = 0;
         let mut best_move = NULL_MOVE;
+        let mut pv = String::new();
 
         for current_depth in 1..=target_depth {
             let iter_start = SystemTime::now();
@@ -237,11 +237,12 @@ impl Searcher {
 
             best_move = self.best_move;
             abs_eval = self.board.current_color.choose(eval, -eval);
+            pv = self.get_pv(current_depth);
 
             let time_taken = self.start_time.elapsed().unwrap();
             let iter_taken = iter_start.elapsed().unwrap();
 
-            self.print_search_info(self.depth, abs_eval);
+            self.print_search_info(self.depth, abs_eval, pv.as_str());
 
             if time_taken.as_millis() >= self.target_time || iter_taken.as_millis() > self.target_time / 8 {
                 break;
@@ -260,7 +261,7 @@ impl Searcher {
         }
 
         if self.time_hit {
-            self.print_search_info(self.depth - 1, abs_eval);
+            self.print_search_info(self.depth - 1, abs_eval, pv.as_str());
         }
 
         self.last_eval = -eval;

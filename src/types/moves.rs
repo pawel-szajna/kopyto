@@ -1,5 +1,6 @@
 use crate::types::{Bitboard, Piece, Square};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 
 #[repr(u16)]
 #[derive(Debug)]
@@ -10,6 +11,17 @@ pub enum Promotion {
     Knight = 3,
 }
 
+impl Display for Promotion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", match self {
+            Promotion::Knight => "n",
+            Promotion::Bishop => "b",
+            Promotion::Rook => "r",
+            Promotion::Queen => "q",
+        })
+    }
+}
+
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
 pub struct Move {
     m: u16,
@@ -18,7 +30,7 @@ pub struct Move {
 impl fmt::Debug for Move {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.m & 0b100000000000000 != 0 {
-            true => write!(f, "{}{}+{:?}", self.get_from(), self.get_to(), self.get_promotion()),
+            true => write!(f, "{}{}{}", self.get_from(), self.get_to(), self.get_promotion()),
             false => write!(f, "{}{}", self.get_from(), self.get_to()),
         }
     }
