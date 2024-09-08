@@ -10,10 +10,11 @@ use crate::search::checks::Checks;
 use crate::search::eval::{Score, Verbosity};
 use crate::search::{book, eval, Options};
 use crate::transpositions::{TableScore, Transpositions};
-use crate::types::Move;
+use crate::types::{Bitboard, Move};
 
 const NULL_MOVE: Move = Move::new();
-const MAX_DEPTH: i16 = 100;
+const MAX_DEPTH: i16 = 64;
+const KILLER_MOVES_STORED: usize = 2;
 
 const ALL_MOVES: bool = false;
 const CAPTURES_ONLY: bool = true;
@@ -27,6 +28,7 @@ pub struct Searcher {
 
     last_eval: Score,
     best_move: Move,
+    killers: [[Move; KILLER_MOVES_STORED]; MAX_DEPTH as usize],
 
     nodes: u64,
 
@@ -47,6 +49,7 @@ impl Searcher {
 
             last_eval: 0,
             best_move: NULL_MOVE,
+            killers: [[NULL_MOVE; KILLER_MOVES_STORED]; MAX_DEPTH as usize],
 
             nodes: 0,
 
@@ -160,13 +163,17 @@ impl Searcher {
         None
     }
 
-    fn get_moves<const CAPTURES_ONLY: bool>(&mut self) -> MoveList {
+    fn get_moves<const CAPTURES_ONLY: bool>(&mut self, depth: i16) -> MoveList {
         let moves = if CAPTURES_ONLY {
             moves_generation::generate_captures(&self.board)
         } else {
             moves_generation::generate_all(&self.board)
         };
-        let weights = moves_generation::order(&self.board, &moves, self.transpositions.get_move(self.board.key()));
+        let weights = moves_generation::order(
+            &self.board,
+            &moves,
+            self.transpositions.get_move(self.board.key()),
+            &self.killers[if depth > 0 { depth } else { MAX_DEPTH - 1 } as usize]);
         MoveList::new(moves, weights)
     }
 
@@ -200,6 +207,21 @@ impl Searcher {
         }
     }
 
+    fn store_killer(&mut self, depth: i16, m: Move) {
+        if (self.board.any_piece & Bitboard::from(m.get_to())).not_empty() {
+            return;
+        }
+
+        let depth = depth as usize;
+
+        if self.killers[depth].contains(&m) {
+            return;
+        }
+
+        self.killers[depth].rotate_right(1);
+        self.killers[depth][0] = m;
+    }
+
     pub fn go(&mut self, options: Options) -> Move {
         if let Some(book_move) = self.get_book_move() {
             return book_move;
@@ -214,7 +236,7 @@ impl Searcher {
         let mut best_move = NULL_MOVE;
         let mut pv = String::new();
 
-        for current_depth in 1..=target_depth {
+        for current_depth in 1..target_depth {
             let iter_start = SystemTime::now();
             let last_eval = eval;
 
@@ -278,7 +300,7 @@ impl Searcher {
         }
 
         self.nodes += 1;
-        let moves = self.get_moves::<ALL_MOVES>();
+        let moves = self.get_moves::<ALL_MOVES>(depth);
 
         if let Some(score) = self.no_moves_conditions(depth, &moves) {
             return score;
@@ -308,6 +330,7 @@ impl Searcher {
 
             if score >= beta {
                 self.transpositions.set(key, depth, TableScore::LowerBound(beta), m);
+                self.store_killer(depth, m);
                 return beta;
             }
 
@@ -338,7 +361,7 @@ impl Searcher {
         }
 
         self.nodes += 1;
-        let moves = self.get_moves::<ALL_MOVES>();
+        let moves = self.get_moves::<ALL_MOVES>(depth);
 
         if let Some(score) = self.no_moves_conditions(depth, &moves) {
             return score;
@@ -350,6 +373,7 @@ impl Searcher {
             self.board.unmake_move();
 
             if eval >= beta {
+                self.store_killer(depth, m);
                 return beta;
             }
         }
@@ -377,7 +401,7 @@ impl Searcher {
             alpha = score;
         }
 
-        let moves = self.get_moves::<CAPTURES_ONLY>();
+        let moves = self.get_moves::<CAPTURES_ONLY>(depth);
         let mut best = NULL_MOVE;
         let mut found_exact = false;
 

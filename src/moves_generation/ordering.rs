@@ -4,7 +4,7 @@ use crate::types::{Bitboard, Move, Piece, Side};
 type PieceValues = [Option<Piece>; 64];
 pub type Weights = Vec<i64>;
 
-pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>) -> Weights {
+pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>, killer_moves: &[Move; 2]) -> Weights {
     let side = board.side_to_move();
     let attacks = board.occupied[!side];
     let pieces = cache_piece_values(board, side, moves);
@@ -12,19 +12,24 @@ pub fn order(board: &Board, moves: &Vec<Move>, hash_move: Option<Move>) -> Weigh
     moves.iter().map(|m| {
         match hash_move {
             Some(hashed) if &hashed == m => 10000,
-            _ => mvv_lva(m, attacks, &pieces),
+            _ => mvv_lva(m, attacks, &pieces, killer_moves),
         }
     }).collect()
 }
 
-fn mvv_lva(m: &Move, attacks: Bitboard, pieces: &PieceValues) -> i64 {
+fn mvv_lva(m: &Move, attacks: Bitboard, pieces: &PieceValues, killer_moves: &[Move; 2]) -> i64 {
     let target_mask = Bitboard::from(m.get_to());
     match (target_mask & attacks).not_empty() {
-        false => 0,
+        false => {
+            match killer_moves.contains(m) {
+                true => 1000,
+                false => 0,
+            }
+        },
         true => {
             let defender_value = piece_value(pieces[m.get_to() as usize]);
             let attacker_value = piece_value(pieces[m.get_from() as usize]);
-            defender_value * 10 - attacker_value
+            5000 + defender_value * 10 - attacker_value
         }
     }
 }
