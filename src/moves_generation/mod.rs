@@ -5,7 +5,7 @@ mod ordering;
 mod perft;
 
 pub use generation::Moves;
-pub use generation::attack_mask;
+pub use generation::real_attack_mask;
 pub use generation::generate_all;
 pub use generation::generate_captures;
 pub use list::MoveList;

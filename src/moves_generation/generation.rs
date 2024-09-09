@@ -115,19 +115,9 @@ fn check_mask(board: &Board, side: Side, king: Bitboard) -> (u64, Bitboard) {
     (checks, check_mask)
 }
 
-pub fn attack_mask(board: &Board, side: Side) -> Bitboard {
-    let opponent = !side;
-
-    let king_idx = board.kings[opponent].peek();
-    let king_attacks = attacks::king(king_idx);
-
-    if (king_attacks & !board.occupied[opponent]).empty() {
-        // king cannot move
-        return Bitboard::EMPTY;
-    }
-
+pub fn real_attack_mask(board: &Board, side: Side) -> Bitboard {
     let mut mask = Bitboard::EMPTY;
-    let occupied = board.any_piece & !board.kings[opponent];
+    let occupied = board.any_piece & !board.kings[!side];
 
     let pawns = board.pawns[side];
     for pawn_idx in pawns {
@@ -152,6 +142,20 @@ pub fn attack_mask(board: &Board, side: Side) -> Bitboard {
     mask |= attacks::king(board.kings[side].peek());
 
     mask
+}
+
+pub fn attack_mask(board: &Board, side: Side) -> Bitboard {
+    let opponent = !side;
+
+    let king_idx = board.kings[opponent].peek();
+    let king_attacks = attacks::king(king_idx);
+
+    if (king_attacks & !board.occupied[opponent]).empty() {
+        // king cannot move
+        return Bitboard::EMPTY;
+    }
+
+    real_attack_mask(board, side)
 }
 
 fn pin_mask(board: &Board, side: Side, king_idx: Square, attacks: Bitboard) -> Bitboard {

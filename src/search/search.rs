@@ -365,7 +365,7 @@ impl Searcher {
                     let mut next_depth = depth - 1;
                     next_depth -= self.late_move_reduction(depth, m, move_counter);
 
-                    let mut score = -self.zero_window(next_depth, -alpha);
+                    let mut score = -self.zero_window(next_depth, -alpha, false);
                     if score > alpha {
                         score = -self.negamax(depth - 1, -beta, -alpha);
                     }
@@ -403,13 +403,25 @@ impl Searcher {
         alpha
     }
 
-    fn zero_window(&mut self, depth: i16, beta: Score) -> Score {
+    fn zero_window(&mut self, depth: i16, beta: Score, last_null: bool) -> Score {
         if depth <= 0 {
             return self.qsearch(0, beta - 1, beta);
         }
 
         if let Some(score) = self.break_conditions(depth, beta - 1, beta) {
             return score;
+        }
+
+        if !last_null && !self.board.in_check() && self.board.any_piece.pieces() > 8 {
+            let null_reduction = 1 + depth * 2 / 3;
+
+            self.board.make_null();
+            let value = -self.zero_window(depth - null_reduction, 1 - beta, true);
+            self.board.unmake_null();
+
+            if value >= beta {
+                return beta;
+            }
         }
 
         self.nodes += 1;
@@ -423,12 +435,11 @@ impl Searcher {
         let mut move_counter = 0;
 
         for m in moves {
-            self.board.make_move(m);
-
             let mut next_depth = depth - 1;
             next_depth -= self.late_move_reduction(depth, m, move_counter);
 
-            let eval = -self.zero_window(next_depth, 1 - beta);
+            self.board.make_move(m);
+            let eval = -self.zero_window(next_depth, 1 - beta, false);
             self.board.unmake_move();
 
             if eval >= beta {
@@ -453,11 +464,11 @@ impl Searcher {
         self.nodes += 1;
         self.nodes_q += 1;
 
-        let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
-
         if self.board.in_checkmate() {
             return self.checkmate_score(depth);
         }
+
+        let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
 
         let delta_margin = weights::BASE_SCORES[Piece::Queen];
 

@@ -224,7 +224,7 @@ impl Board {
         match self.attacks[side] {
             Some(value) => value,
             None => {
-                let attacks = moves_generation::attack_mask(self, side);
+                let attacks = moves_generation::real_attack_mask(self, side);
                 self.attacks[side] = Some(attacks);
                 attacks
             }
@@ -236,7 +236,8 @@ impl Board {
             Some(value) => value,
             None => {
                 let side = self.side_to_move();
-                let is_in_check = (self.kings[side] & self.get_attacks(!side)).not_empty();
+                let opponent_attacks = self.get_attacks(!side);
+                let is_in_check = (self.kings[side] & opponent_attacks).not_empty();
                 self.check = Some(is_in_check);
                 is_in_check
             }
@@ -286,8 +287,54 @@ impl Board {
         self.hash = transpositions::ZOBRIST.key(self, self.castle_kingside, self.castle_queenside);
     }
 
+    pub fn make_null(&mut self) {
+        let history_entry = History::new(
+            Bitboard::EMPTY,
+            Bitboard::EMPTY,
+            self.castle_kingside,
+            self.castle_queenside,
+            self.half_moves_clock,
+            self.en_passant,
+            self.check,
+            self.checkmate,
+            self.hash,
+        );
+
+        self.history.push(history_entry);
+
+        self.current_color = !self.current_color;
+
+        if self.current_color.is_white() {
+            self.full_moves_count += 1;
+        }
+
+        self.check = None;
+        self.checkmate = None;
+        self.attacks = [None, None];
+        self.moves = [None, None];
+        self.en_passant = Bitboard::EMPTY;
+        self.half_moves_clock += 1;
+        self.update_hash();
+    }
+
+    pub fn unmake_null(&mut self) {
+        if self.current_color.is_white() {
+            self.full_moves_count -= 1;
+        }
+
+        let history_entry = unsafe { self.history.pop().unwrap_unchecked() };
+
+        self.half_moves_clock = history_entry.half_moves;
+        self.current_color = !self.current_color;
+        self.check = history_entry.check;
+        self.checkmate = history_entry.checkmate;
+        self.attacks = history_entry.attacks;
+        self.moves = [None, None];
+        self.en_passant = history_entry.en_passant;
+        self.hash = history_entry.hash;
+    }
+
     pub fn make_move(&mut self, m: Move) {
-        // println!("Making move {}{}", idx_to_str(m.get_from() as usize), idx_to_str(m.get_to() as usize));
         let from_mask = Bitboard::from(m.get_from());
         let to_mask = Bitboard::from(m.get_to());
 
@@ -614,6 +661,13 @@ mod tests {
             board.assert_position("r3k2r/p1ppqpb1/1n2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R2BKb1R w KQkq - 2 2");
             board.unmake_move();
             board.assert_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPB1PPP/R2BK2R b KQkq - 1 1");
+        }
+
+        #[test]
+        fn bug_4() {
+            // r1bqkbnr/pppp2pp/8/4pp2/8/2NnP1PP/PPPPNP2/R1BQKB1R w KQkq - 4 3 should detect in check
+            let mut board = Board::from_fen("r1bqkbnr/pppp2pp/8/4pp2/8/2NnP1PP/PPPPNP2/R1BQKB1R w KQkq - 4 3");
+            assert_eq!(board.in_check(), true);
         }
     }
 }
