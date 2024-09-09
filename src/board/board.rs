@@ -18,8 +18,8 @@ struct History {
     promotion: bool,
     en_passant: Bitboard,
     attacks: [Option<Bitboard>; 2],
-    check: [Option<bool>; 2],
-    checkmate: [Option<bool>; 2],
+    check: Option<bool>,
+    checkmate: Option<bool>,
     hash: u64,
 }
 
@@ -31,8 +31,8 @@ impl History {
         castle_queenside: ColorBool,
         half_moves: u32,
         en_passant: Bitboard,
-        check: [Option<bool>; 2],
-        checkmate: [Option<bool>; 2],
+        check: Option<bool>,
+        checkmate: Option<bool>,
         hash: u64,
     ) -> Self {
         Self {
@@ -77,8 +77,8 @@ pub struct Board {
     pub full_moves_count: u32,
 
     pub en_passant: Bitboard,
-    check: [Option<bool>; 2],
-    checkmate: [Option<bool>; 2],
+    check: Option<bool>,
+    checkmate: Option<bool>,
     pub attacks: [Option<Bitboard>; 2],
     pub moves: [Option<Vec<Move>>; 2],
 }
@@ -109,8 +109,8 @@ impl Board {
             full_moves_count: 1,
 
             en_passant: Bitboard::EMPTY,
-            check: [None, None],
-            checkmate: [None, None],
+            check: None,
+            checkmate: None,
             attacks: [None, None],
             moves: [None, None],
         }
@@ -231,12 +231,13 @@ impl Board {
         }
     }
 
-    pub fn in_check(&mut self, side: Side) -> bool {
-        match self.check[side] {
+    pub fn in_check(&mut self) -> bool {
+        match self.check {
             Some(value) => value,
             None => {
+                let side = self.side_to_move();
                 let is_in_check = (self.kings[side] & self.get_attacks(!side)).not_empty();
-                self.check[side] = Some(is_in_check);
+                self.check = Some(is_in_check);
                 is_in_check
             }
         }
@@ -244,15 +245,14 @@ impl Board {
 
     #[allow(dead_code)]
     pub fn in_checkmate(&mut self) -> bool {
-        let side = self.side_to_move();
-        match self.checkmate[side] {
+        match self.checkmate {
             Some(value) => value,
             None => {
-                let is_in_checkmate = match self.in_check(side) {
+                let is_in_checkmate = match self.in_check() {
                     false => false,
                     true => moves_generation::generate_all(self).is_empty(),
                 };
-                self.checkmate[side] = Some(is_in_checkmate);
+                self.checkmate = Some(is_in_checkmate);
                 is_in_checkmate
             }
         }
@@ -376,8 +376,8 @@ impl Board {
         history_entry.attacks = self.attacks;
 
         self.history.push(history_entry);
-        self.check = [None, None];
-        self.checkmate = [None, None];
+        self.check = None;
+        self.checkmate = None;
         self.attacks = [None, None];
         self.moves = [None, None];
         self.update_hash();

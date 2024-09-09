@@ -3,7 +3,7 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 use rand::Rng;
 use rand::seq::SliceRandom;
-use crate::board::{masks, Board, FenProducer};
+use crate::board::{Board, FenProducer};
 use crate::moves_generation;
 use crate::moves_generation::MoveList;
 use crate::search::checks::Checks;
@@ -226,7 +226,7 @@ impl Searcher {
     fn no_moves_conditions(&mut self, depth: i16, moves: &MoveList) -> Option<Score> {
         match moves.is_empty() {
             false => None,
-            true => Some(match self.board.in_check(self.board.side_to_move()) {
+            true => Some(match self.board.in_check() {
                 false => 0, // stalemate
                 true => self.checkmate_score(depth), // checkmate in N
             })
@@ -237,7 +237,7 @@ impl Searcher {
         let depth_from_root = self.depth - depth;
         if depth_from_root > 3 && move_counter > 4
             && !self.killers[depth as usize].contains(&m)
-            && !self.board.in_check(self.board.side_to_move()) {
+            && !self.board.in_check() {
             return if move_counter < 12 { 1 } else { 2 };
         }
         0
@@ -461,7 +461,7 @@ impl Searcher {
 
         let delta_margin = weights::BASE_SCORES[Piece::Queen];
 
-        if score + delta_margin < alpha && !self.board.in_check(side) {
+        if score + delta_margin < alpha && !self.board.in_check() {
             self.delta_prunes += 1;
             return alpha;
         }
