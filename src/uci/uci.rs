@@ -178,7 +178,7 @@ impl UCI {
 
         let mut options = search::Options::new();
         self.parse_go_options(&mut options, cmd);
-        let mut searcher = Searcher::new(self.board.clone(), &mut self.transpositions);
+        let mut searcher = Searcher::new(self.board.clone(), &mut self.transpositions, self.book);
         let result = searcher.go(options);
 
         println!("bestmove {}", result.to_uci());

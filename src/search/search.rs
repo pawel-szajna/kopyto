@@ -23,6 +23,8 @@ pub struct Searcher<'a> {
     board: Board,
     transpositions: &'a mut Transpositions,
 
+    book: bool,
+
     depth: i16,
     seldepth: i16,
 
@@ -45,10 +47,12 @@ pub struct Searcher<'a> {
 }
 
 impl<'a> Searcher<'a> {
-    pub fn new(board: Board, transpositions: &'a mut Transpositions) -> Self {
+    pub fn new(board: Board, transpositions: &'a mut Transpositions, book: bool) -> Self {
         Self {
             board,
             transpositions,
+
+            book,
 
             depth: 0,
             seldepth: 0,
@@ -165,8 +169,10 @@ impl<'a> Searcher<'a> {
     }
 
     fn get_book_move(&self) -> Option<Move> {
-        // return None;
-        // TODO: book should be opt-in, not default
+        if !self.book {
+            return None;
+        }
+
         if let Some(book_moves) = book::BOOK.search(self.board.current_color, self.board.full_moves_count, self.board.key()) {
             let mut legal_moves = moves_generation::generate_all(&self.board);
             legal_moves.retain(|m| book_moves.contains(m));
