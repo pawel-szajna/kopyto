@@ -1,18 +1,27 @@
+use std::str::FromStr;
 use scanner_rust::ScannerAscii;
 use crate::board::{Board, FenConsumer, FenProducer};
 use crate::types::Move;
 use crate::moves_generation::perft;
 use crate::search;
 use crate::search::{Searcher, Verbosity};
+use crate::transpositions::Transpositions;
 
 pub struct UCI {
     board: Board,
     last_position: String,
+    book: bool,
+    transpositions: Transpositions,
 }
 
 impl UCI {
     pub fn new() -> Self {
-        Self { board: Board::from_starting_position(), last_position: String::new() }
+        Self {
+            board: Board::from_starting_position(),
+            last_position: String::new(),
+            book: false,
+            transpositions: Transpositions::new(64),
+        }
     }
 
     pub fn run(&mut self) {
@@ -32,6 +41,7 @@ impl UCI {
                 "currentfen" => println!("{}", self.board.export_fen()),
                 cmd if cmd.starts_with("position") => self.position(cmd.strip_prefix("position ")),
                 cmd if cmd.starts_with("go") => self.go(cmd.strip_prefix("go").unwrap_or("").trim()),
+                cmd if cmd.starts_with("setoption") => self.setoption(cmd.strip_prefix("setoption").unwrap_or("").trim()),
                 _ => println!("info string unknown command"),
             }
         }
@@ -40,6 +50,8 @@ impl UCI {
     fn uci(&self) {
         println!("id name kopyto");
         println!("id author szajnapawel@gmail.com");
+        println!("option name Book type check default false");
+        println!("option name Hash type spin default 64 min 1 max 2048");
         println!("uciok");
     }
 
@@ -49,6 +61,32 @@ impl UCI {
 
     fn ucinewgame(&mut self) {
         self.board = Board::new();
+    }
+
+    fn setoption(&mut self, option: &str) {
+        let mut scanner = ScannerAscii::new(option.as_bytes());
+        let mut option_name = String::new();
+        let mut option_value = String::new();
+
+        loop {
+            match scanner.next() {
+                Err(e) => println!("info string cannot parse option: {}", e),
+                Ok(mode) => match mode {
+                    None => break,
+                    Some(mode) => match mode.as_str() {
+                        "name" => option_name = scanner.next().unwrap().unwrap(),
+                        "value" => option_value = scanner.next().unwrap().unwrap(),
+                        _ => (),
+                    }
+                }
+            }
+        }
+
+        match option_name.as_str() {
+            "Book" => self.book = bool::from_str(option_value.as_str()).unwrap(),
+            "Hash" => self.transpositions = Transpositions::new(usize::from_str(option_value.as_str()).unwrap()),
+            _ => println!("unknown option: {}, ignoring", option_name),
+        }
     }
 
     fn position_moves(&mut self, moves: Option<&str>) {
@@ -140,7 +178,7 @@ impl UCI {
 
         let mut options = search::Options::new();
         self.parse_go_options(&mut options, cmd);
-        let mut searcher = Searcher::new(self.board.clone());
+        let mut searcher = Searcher::new(self.board.clone(), &mut self.transpositions);
         let result = searcher.go(options);
 
         println!("bestmove {}", result.to_uci());

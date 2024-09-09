@@ -19,9 +19,9 @@ pub const KILLER_MOVES_STORED: usize = 3;
 const ALL_MOVES: bool = false;
 const CAPTURES_ONLY: bool = true;
 
-pub struct Searcher {
+pub struct Searcher<'a> {
     board: Board,
-    transpositions: Transpositions,
+    transpositions: &'a mut Transpositions,
 
     depth: i16,
     seldepth: i16,
@@ -44,11 +44,11 @@ pub struct Searcher {
     time_hit: bool,
 }
 
-impl Searcher {
-    pub fn new(board: Board) -> Self {
+impl<'a> Searcher<'a> {
+    pub fn new(board: Board, transpositions: &'a mut Transpositions) -> Self {
         Self {
             board,
-            transpositions: Transpositions::new(),
+            transpositions,
 
             depth: 0,
             seldepth: 0,

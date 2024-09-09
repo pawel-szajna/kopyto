@@ -21,27 +21,27 @@ impl Entry {
     }
 }
 
-const TRANSPOSITION_TABLE_SIZE: usize = 64 * 1024 * 1024;
-const TRANSPOSITION_TABLE_LENGTH: usize = TRANSPOSITION_TABLE_SIZE / size_of::<Entry>();
-
 pub struct Transpositions {
+    length: usize,
     scores: Box<[Entry]>,
 }
 
 impl Transpositions {
-    pub fn new() -> Self {
+    pub fn new(desired_size: usize) -> Self {
+        let length = desired_size * 1048576 / size_of::<Entry>();
         Self {
-            scores: vec![Entry::new(); TRANSPOSITION_TABLE_LENGTH].into_boxed_slice(),
+            length,
+            scores: vec![Entry::new(); length].into_boxed_slice(),
         }
     }
 
     pub fn usage(&self) -> usize {
         let elems = self.scores.iter().filter(|e| e.hash != 0).count();
-        elems * 1000 / TRANSPOSITION_TABLE_LENGTH
+        elems * 1000 / self.length
     }
 
     pub fn get_move(&self, hash: u64) -> Option<Move> {
-        let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
+        let entry = self.scores[hash as usize % self.length];
         match entry.hash == hash {
             true => Some(entry.m),
             false => None,
@@ -49,7 +49,7 @@ impl Transpositions {
     }
 
     pub fn get(&self, hash: u64, depth: i16, alpha: Score, beta: Score) -> Option<Score> {
-        let entry = self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH];
+        let entry = self.scores[hash as usize % self.length];
         if entry.depth < depth || entry.hash != hash {
             return None;
         }
@@ -63,9 +63,9 @@ impl Transpositions {
     }
 
     pub fn set(&mut self, hash: u64, depth: i16, score: TableScore, m: Move) {
-        let idx = hash as usize % TRANSPOSITION_TABLE_LENGTH;
+        let idx = hash as usize % self.length;
         if self.scores[idx].hash != hash || self.scores[idx].depth <= depth {
-            self.scores[hash as usize % TRANSPOSITION_TABLE_LENGTH] = Entry {
+            self.scores[hash as usize % self.length] = Entry {
                 hash,
                 depth,
                 score,
