@@ -295,13 +295,13 @@ impl<'a> Searcher<'a> {
 
             let window_size = 40;
 
-            eval = self.negamax(current_depth, last_eval - window_size, last_eval + window_size);
+            eval = self.negamax(current_depth, last_eval - window_size, last_eval + window_size, true);
             if self.time_hit {
                 break;
             }
 
             if (last_eval - eval).abs() >= window_size {
-                eval = self.negamax(current_depth, Score::MIN + 1, Score::MAX);
+                eval = self.negamax(current_depth, Score::MIN + 1, Score::MAX, true);
                 if self.time_hit {
                     break;
                 }
@@ -340,7 +340,7 @@ impl<'a> Searcher<'a> {
         best_move
     }
 
-    fn negamax(&mut self, depth: i16, mut alpha: Score, beta: Score) -> Score {
+    fn negamax(&mut self, depth: i16, mut alpha: Score, beta: Score, root: bool) -> Score {
         if depth <= 0 {
             return self.qsearch(0, alpha, beta);
         }
@@ -360,20 +360,25 @@ impl<'a> Searcher<'a> {
         let mut best = NULL_MOVE;
         let mut found_exact = false;
         let mut move_counter = 0;
+        let mut extensions = 0;
+
+        if self.board.in_check() {
+            extensions += 1;
+        }
 
         for m in moves {
             self.board.make_move(m.clone());
 
             let key = self.board.key();
             let score = match move_counter > 0 {
-                false => -self.negamax(depth - 1, -beta, -alpha),
+                false => -self.negamax(depth - 1, -beta, -alpha, false),
                 true => {
-                    let mut next_depth = depth - 1;
+                    let mut next_depth = depth + extensions - 1;
                     next_depth -= self.late_move_reduction(depth, m, move_counter);
 
                     let mut score = -self.zero_window(next_depth, -alpha, false);
                     if score > alpha {
-                        score = -self.negamax(depth - 1, -beta, -alpha);
+                        score = -self.negamax(depth - 1, -beta, -alpha, false);
                     }
                     score
                 }
@@ -395,7 +400,7 @@ impl<'a> Searcher<'a> {
                 found_exact = true;
                 alpha = score;
 
-                if depth == self.depth {
+                if root {
                     self.best_move = m;
                 }
             }
@@ -444,6 +449,10 @@ impl<'a> Searcher<'a> {
 
         if depth <= 0 {
             return self.qsearch(0, beta - 1, beta);
+        }
+
+        if self.board.in_check() {
+            depth += 1;
         }
 
         let mut move_counter = 0;
