@@ -294,6 +294,14 @@ const OPENINGS_BLACK: &[&[&str]] = &[
 
     &[ "g1f3", "d7d5", "d2d4", "g8f6" ],
     &[ "g1f3", "g8f6", "d2d4", "g7g6", "c2c4", "f8g7" ],
+
+    // -- Against Nc3 -- //
+
+    &[ "b1c3", "d7d5", "d2d4", "g8f6" ],
+    &[ "b1c3", "d7d5", "g1f3", "g8f6" ],
+    &[ "b1c3", "c7c5", "g1f3", "b8c6" ],
+    &[ "b1c3", "c7c5", "e2e4", "b8c6" ],
+    &[ "b1c3", "g8f6" ],
 ];
 
 impl BookGenerator for Board {
