@@ -339,7 +339,7 @@ impl<'a> Searcher<'a> {
                 consecutive_evals = 0;
             }
 
-            if consecutive_evals > 5 {
+            if consecutive_evals > 5 && abs_eval.abs() >= self.checkmate_score(MAX_DEPTH).abs() {
                 break;
             }
 
