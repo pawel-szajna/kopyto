@@ -423,6 +423,20 @@ impl<'a> Searcher<'a> {
             return score;
         }
 
+        // Reverse futility pruning
+        if !last_null && !self.board.in_check() && depth < 3 {
+            let margin = match depth {
+                1 => weights::BASE_SCORES[Piece::Rook],
+                2 => weights::BASE_SCORES[Piece::Queen],
+                _ => 0, // should be impossible
+            };
+            let eval = eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
+            if eval - margin > beta {
+                return beta;
+            }
+        }
+
+        // Null move pruning
         if !last_null && !self.board.in_check() && self.board.any_piece.pieces() > 8 {
             let null_reduction = 1 + depth * 2 / 3;
 
