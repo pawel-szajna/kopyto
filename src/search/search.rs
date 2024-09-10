@@ -409,7 +409,7 @@ impl<'a> Searcher<'a> {
         alpha
     }
 
-    fn zero_window(&mut self, depth: i16, beta: Score, last_null: bool) -> Score {
+    fn zero_window(&mut self, mut depth: i16, beta: Score, last_null: bool) -> Score {
         if depth <= 0 {
             return self.qsearch(0, beta - 1, beta);
         }
@@ -436,6 +436,14 @@ impl<'a> Searcher<'a> {
 
         if let Some(score) = self.no_moves_conditions(depth, &moves) {
             return score;
+        }
+
+        if depth > 4 && self.transpositions.get_move(self.board.key()).is_none() {
+            depth -= 2;
+        }
+
+        if depth <= 0 {
+            return self.qsearch(0, beta - 1, beta);
         }
 
         let mut move_counter = 0;
