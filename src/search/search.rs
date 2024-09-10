@@ -95,10 +95,10 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn print_search_info(&mut self, current_depth: i16, score: Score, pv: &str) {
+    fn print_search_info(&mut self, current_depth: i16, score: Score, pv: &str, aspiration_fail: bool) {
         let time = self.start_time.elapsed().unwrap();
         println!(
-            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {} dprunes {}",
+            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {} dprunes {} asp_retry {}",
             current_depth,
             self.seldepth.max(current_depth),
             if score.abs() > 9000 {
@@ -119,6 +119,7 @@ impl<'a> Searcher<'a> {
             self.nodes_z,
             self.nodes_q,
             self.delta_prunes,
+            aspiration_fail,
         );
     }
 
@@ -225,16 +226,16 @@ impl<'a> Searcher<'a> {
         None
     }
 
-    fn checkmate_score(&self, depth: i16) -> Score {
-        -(10000 - (self.depth - depth))
+    fn checkmate_score(&self, ply: i16) -> Score {
+        -(10000 - ply)
     }
 
-    fn no_moves_conditions(&mut self, depth: i16, moves: &MoveList) -> Option<Score> {
+    fn no_moves_conditions(&mut self, ply: i16, moves: &MoveList) -> Option<Score> {
         match moves.is_empty() {
             false => None,
             true => Some(match self.board.in_check() {
                 false => 0, // stalemate
-                true => self.checkmate_score(depth), // checkmate in N
+                true => self.checkmate_score(ply), // checkmate in N
             })
         }
     }
@@ -286,6 +287,10 @@ impl<'a> Searcher<'a> {
         let mut best_move = NULL_MOVE;
         let mut pv = String::new();
 
+        let mut consecutive_evals = 0;
+        let mut last_turn = eval;
+        let mut last_move = NULL_MOVE;
+
         for current_depth in 1..=target_depth {
             let iter_start = SystemTime::now();
             let last_eval = eval;
@@ -294,14 +299,16 @@ impl<'a> Searcher<'a> {
             self.seldepth = 0;
 
             let window_size = 40;
+            let mut aspiration_fail = false;
 
-            eval = self.negamax(current_depth, last_eval - window_size, last_eval + window_size, true);
+            eval = self.negamax(0, current_depth, last_eval - window_size, last_eval + window_size, true);
             if self.time_hit {
                 break;
             }
 
             if (last_eval - eval).abs() >= window_size {
-                eval = self.negamax(current_depth, Score::MIN + 1, Score::MAX, true);
+                aspiration_fail = true;
+                eval = self.negamax(0, current_depth, Score::MIN + 1, Score::MAX, true);
                 if self.time_hit {
                     break;
                 }
@@ -314,11 +321,24 @@ impl<'a> Searcher<'a> {
             let time_taken = self.start_time.elapsed().unwrap();
             let iter_taken = iter_start.elapsed().unwrap();
 
-            self.print_search_info(self.depth, abs_eval, pv.as_str());
+            self.print_search_info(self.depth, abs_eval, pv.as_str(), aspiration_fail);
 
             if time_taken.as_millis() >= self.target_time || iter_taken.as_millis() > self.target_time / 8 {
                 break;
             }
+
+            if best_move == last_move && abs_eval == last_turn {
+                consecutive_evals += 1;
+            } else {
+                consecutive_evals = 0;
+            }
+
+            if consecutive_evals > 5 {
+                break;
+            }
+
+            last_move = best_move;
+            last_turn = abs_eval;
         }
 
         if best_move == NULL_MOVE {
@@ -333,16 +353,16 @@ impl<'a> Searcher<'a> {
         }
 
         if self.time_hit {
-            self.print_search_info(self.depth - 1, abs_eval, pv.as_str());
+            self.print_search_info(self.depth - 1, abs_eval, pv.as_str(), false);
         }
 
         self.last_eval = -eval;
         best_move
     }
 
-    fn negamax(&mut self, depth: i16, mut alpha: Score, beta: Score, root: bool) -> Score {
+    fn negamax(&mut self, ply: i16, depth: i16, mut alpha: Score, beta: Score, root: bool) -> Score {
         if depth <= 0 {
-            return self.qsearch(0, alpha, beta);
+            return self.qsearch(ply, 0, alpha, beta);
         }
 
         if let Some(score) = self.break_conditions(depth, alpha, beta) {
@@ -353,7 +373,7 @@ impl<'a> Searcher<'a> {
         self.nodes_n += 1;
         let moves = self.get_moves::<ALL_MOVES>(depth);
 
-        if let Some(score) = self.no_moves_conditions(depth, &moves) {
+        if let Some(score) = self.no_moves_conditions(ply, &moves) {
             return score;
         }
 
@@ -371,14 +391,14 @@ impl<'a> Searcher<'a> {
 
             let key = self.board.key();
             let score = match move_counter > 0 {
-                false => -self.negamax(depth - 1, -beta, -alpha, false),
+                false => -self.negamax(ply + 1, depth - 1, -beta, -alpha, false),
                 true => {
                     let mut next_depth = depth + extensions - 1;
                     next_depth -= self.late_move_reduction(depth, m, move_counter);
 
-                    let mut score = -self.zero_window(next_depth, -alpha, false);
+                    let mut score = -self.zero_window(ply + 1, next_depth, -alpha, false);
                     if score > alpha {
-                        score = -self.negamax(depth - 1, -beta, -alpha, false);
+                        score = -self.negamax(ply + 1, depth - 1, -beta, -alpha, false);
                     }
                     score
                 }
@@ -414,13 +434,18 @@ impl<'a> Searcher<'a> {
         alpha
     }
 
-    fn zero_window(&mut self, mut depth: i16, beta: Score, last_null: bool) -> Score {
+    fn zero_window(&mut self, ply: i16, mut depth: i16, beta: Score, last_null: bool) -> Score {
         if depth <= 0 {
-            return self.qsearch(0, beta - 1, beta);
+            return self.qsearch(ply, 0, beta - 1, beta);
         }
 
         if let Some(score) = self.break_conditions(depth, beta - 1, beta) {
             return score;
+        }
+
+        // Mate distance pruning
+        if max(beta - 1, self.checkmate_score(ply)) >= min(-self.checkmate_score(ply + 1), beta) {
+            return max(beta - 1, self.checkmate_score(ply));
         }
 
         // Reverse futility pruning
@@ -441,7 +466,7 @@ impl<'a> Searcher<'a> {
             let null_reduction = 1 + depth * 2 / 3;
 
             self.board.make_null();
-            let value = -self.zero_window(depth - null_reduction, 1 - beta, true);
+            let value = -self.zero_window(ply + 2, depth - null_reduction, 1 - beta, true);
             self.board.unmake_null();
 
             if value >= beta {
@@ -453,18 +478,20 @@ impl<'a> Searcher<'a> {
         self.nodes_z += 1;
         let moves = self.get_moves::<ALL_MOVES>(depth);
 
-        if let Some(score) = self.no_moves_conditions(depth, &moves) {
+        if let Some(score) = self.no_moves_conditions(ply, &moves) {
             return score;
         }
 
+        // Internal iterative deepening
         if depth > 4 && self.transpositions.get_move(self.board.key()).is_none() {
             depth -= 2;
         }
 
         if depth <= 0 {
-            return self.qsearch(0, beta - 1, beta);
+            return self.qsearch(ply, 0, beta - 1, beta);
         }
 
+        // Check extension
         if self.board.in_check() {
             depth += 1;
         }
@@ -476,7 +503,7 @@ impl<'a> Searcher<'a> {
             next_depth -= self.late_move_reduction(depth, m, move_counter);
 
             self.board.make_move(m);
-            let eval = -self.zero_window(next_depth, 1 - beta, false);
+            let eval = -self.zero_window(ply + 1, next_depth, 1 - beta, false);
             self.board.unmake_move();
 
             if eval >= beta {
@@ -490,7 +517,7 @@ impl<'a> Searcher<'a> {
         beta - 1
     }
 
-    fn qsearch(&mut self, depth: i16, mut alpha: Score, beta: Score) -> Score {
+    fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, beta: Score) -> Score {
         if let Some(score) = self.break_conditions(depth, alpha, beta) {
             return score;
         }
@@ -528,7 +555,7 @@ impl<'a> Searcher<'a> {
 
         for capture in moves {
             self.board.make_move(capture);
-            let score = -self.qsearch(depth - 1, -beta, -alpha);
+            let score = -self.qsearch(ply + 1, depth - 1, -beta, -alpha);
             self.board.unmake_move();
 
             if self.time_hit {
