@@ -39,6 +39,8 @@ pub struct Searcher<'a> {
     nodes_z: u64,
     nodes_q: u64,
     delta_prunes: u64,
+    razoring_attempts: u64,
+    razoring_success: u64,
 
     clock_queries: usize,
     start_time: SystemTime,
@@ -68,6 +70,8 @@ impl<'a> Searcher<'a> {
             nodes_z: 0,
             nodes_q: 0,
             delta_prunes: 0,
+            razoring_attempts: 0,
+            razoring_success: 0,
 
             clock_queries: 0,
             start_time: SystemTime::now(),
@@ -98,7 +102,7 @@ impl<'a> Searcher<'a> {
     fn print_search_info(&mut self, current_depth: i16, score: Score, pv: &str, aspiration_fail: bool) {
         let time = self.start_time.elapsed().unwrap();
         println!(
-            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {} dprunes {} asp_retry {}",
+            "info depth {} seldepth {} score {} nodes {} nps {} time {} hashfull {} tbhits {} pv{} string nodes_n {} nodes_z {} nodes_q {} dprunes {} asp_retry {} razor att {} succ {}",
             current_depth,
             self.seldepth.max(current_depth),
             if score.abs() > 9000 {
@@ -120,6 +124,8 @@ impl<'a> Searcher<'a> {
             self.nodes_q,
             self.delta_prunes,
             aspiration_fail,
+            self.razoring_attempts,
+            self.razoring_success,
         );
     }
 
@@ -448,6 +454,18 @@ impl<'a> Searcher<'a> {
             return max(beta - 1, self.checkmate_score(ply));
         }
 
+        let current_eval = eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
+
+        // Razoring
+        if !self.board.in_check() && current_eval + 500 + 200 * depth * depth < beta - 1 {
+            self.razoring_attempts += 1;
+            let quiescence_eval = self.qsearch(ply, 0, beta - 1, beta);
+            if quiescence_eval < beta - 1 {
+                self.razoring_success += 1;
+                return quiescence_eval;
+            }
+        }
+
         // Reverse futility pruning
         if !last_null && !self.board.in_check() && depth < 3 {
             let margin = match depth {
@@ -455,8 +473,8 @@ impl<'a> Searcher<'a> {
                 2 => weights::BASE_SCORES[Piece::Queen],
                 _ => 0, // should be impossible
             };
-            let eval = eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
-            if eval - margin > beta {
+
+            if current_eval - margin > beta {
                 return beta;
             }
         }
