@@ -58,8 +58,7 @@ fn generate<const MODE: bool>(board: &Board) -> Moves {
     moves
 }
 
-fn generate_piece(moves: &mut Moves, mask: Bitboard, generator: impl Fn(Square) -> Bitboard)
-{
+fn generate_piece(moves: &mut Moves, mask: Bitboard, generator: impl Fn(Square) -> Bitboard) {
     for src_idx in mask {
         for tgt_idx in generator(src_idx) {
             moves.push(Move::from_idx(src_idx, tgt_idx));
@@ -728,7 +727,7 @@ mod tests {
         board.make_move(Move::from_uci("d1a4"));
 
         move_generation_comparison(
-            generate::<ALL_MOVES>(&mut board),
+            generate::<ALL_MOVES>(&board),
             vec![
                 a_move!("b7", "b5"),
                 a_move!("b8", "c6"),

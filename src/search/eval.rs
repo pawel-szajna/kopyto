@@ -127,6 +127,7 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
         let endgame_weight = self.endgame_weight();
         let phase_score = lerp(endgame_weight, score_middle, score_end);
         let side_bonus = self.side_bonus();
+        let mobility = self.mobility();
 
         if VERBOSE {
             println!("score_middle: {}", score_middle);
@@ -134,9 +135,10 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
             println!("endgame_weight: {}", endgame_weight);
             println!("phase_score: {}", phase_score);
             println!("side_bonus: {}", side_bonus);
+            println!("mobility: {}", mobility);
         }
 
-        phase_score + side_bonus
+        phase_score + side_bonus + mobility
     }
 
     fn evaluate_middle(&self) -> Score {
@@ -310,6 +312,43 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
 
             side_score -= self.doubled_pawns[side] * 20;
             side_score -= self.isolated_pawns[side] * 8;
+
+            score += multiplier(side) * side_score;
+        }
+
+        score
+    }
+
+    fn piece_mobility(&self, attacks: Bitboard, mask: Bitboard) -> Score {
+        (attacks & mask).pieces() as Score
+    }
+
+    fn mobility(&self) -> Score {
+        let mut score = 0;
+
+        for side in [Side::White, Side::Black] {
+            let mut side_score = 0;
+
+            let mut good_targets = !self.board.occupied[side];
+            for enemy_pawn in self.board.pawns[!side] {
+                good_targets &= !attacks::pawn(!side, enemy_pawn);
+            }
+
+            for knight in self.board.knights[side] {
+                side_score += 4 * self.piece_mobility(attacks::knight(knight), good_targets);
+            }
+
+            for bishop in self.board.bishops[side] {
+                side_score += 2 * self.piece_mobility(attacks::bishop(bishop, self.board.any_piece), good_targets);
+            }
+
+            for rook in self.board.rooks[side] {
+                side_score += 3 * self.piece_mobility(attacks::rook(rook, self.board.any_piece), good_targets);
+            }
+
+            for queen in self.board.queens[side] {
+                side_score += 2 * self.piece_mobility(attacks::queen(queen, self.board.any_piece), good_targets);
+            }
 
             score += multiplier(side) * side_score;
         }
