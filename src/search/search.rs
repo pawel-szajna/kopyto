@@ -404,10 +404,12 @@ impl<'a> Searcher<'a> {
         let mut best = NULL_MOVE;
         let mut found_exact = false;
         let mut move_counter = 0;
-        let mut extensions = 0;
 
+        #[cfg(feature = "check_extension")] // This is fucking ridiculous
+        let mut depth = depth;
+        #[cfg(feature = "check_extension")]
         if self.board.in_check() {
-            extensions += 1;
+            depth += 1;
         }
 
         for m in moves {
@@ -417,7 +419,7 @@ impl<'a> Searcher<'a> {
             let score = match move_counter > 0 {
                 false => -self.negamax(ply + 1, depth - 1, -beta, -alpha, false),
                 true => {
-                    let mut next_depth = depth + extensions - 1;
+                    let mut next_depth = depth - 1;
                     next_depth -= self.late_move_reduction(depth, m, move_counter);
 
                     let mut score = -self.zero_window(ply + 1, next_depth, -alpha, false);
@@ -486,8 +488,8 @@ impl<'a> Searcher<'a> {
         // Reverse futility pruning
         if !last_null && !self.board.in_check() && depth < 3 {
             let margin = match depth {
-                1 => weights::BASE_SCORES[Piece::Rook],
-                2 => weights::BASE_SCORES[Piece::Queen],
+                1 => weights::BASE_SCORES[Piece::Bishop],
+                2 => weights::BASE_SCORES[Piece::Rook],
                 _ => 0, // should be impossible
             };
 
@@ -527,6 +529,7 @@ impl<'a> Searcher<'a> {
         }
 
         // Check extension
+        #[cfg(feature = "check_extension")]
         if self.board.in_check() {
             depth += 1;
         }
