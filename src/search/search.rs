@@ -279,6 +279,20 @@ impl<'a> Searcher<'a> {
         self.killers[depth][0] = m;
     }
 
+    fn mate_distance_pruning(&self, ply: i16, alpha: &mut Score, beta: &mut Score) -> Option<Score> {
+        let new_alpha = (*alpha).max(self.checkmate_score(ply));
+        let new_beta = (*beta).min(-self.checkmate_score(ply));
+
+        if new_alpha >= new_beta {
+            return Some(new_alpha)
+        }
+
+        *alpha = new_alpha;
+        *beta = new_beta;
+
+        None
+    }
+
     pub fn go(&mut self, options: Options) -> Move {
         if let Some(book_move) = self.get_book_move() {
             return book_move;
@@ -339,7 +353,7 @@ impl<'a> Searcher<'a> {
                 consecutive_evals = 0;
             }
 
-            if consecutive_evals > 5 && abs_eval.abs() >= self.checkmate_score(MAX_DEPTH).abs() {
+            if consecutive_evals > 8 && abs_eval.abs() >= self.checkmate_score(MAX_DEPTH).abs() {
                 break;
             }
 
@@ -366,12 +380,16 @@ impl<'a> Searcher<'a> {
         best_move
     }
 
-    fn negamax(&mut self, ply: i16, depth: i16, mut alpha: Score, beta: Score, root: bool) -> Score {
+    fn negamax(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score, root: bool) -> Score {
         if depth <= 0 {
             return self.qsearch(ply, 0, alpha, beta);
         }
 
         if let Some(score) = self.break_conditions(depth, alpha, beta) {
+            return score;
+        }
+
+        if let Some(score) = self.mate_distance_pruning(ply, &mut alpha, &mut beta) {
             return score;
         }
 
@@ -440,7 +458,7 @@ impl<'a> Searcher<'a> {
         alpha
     }
 
-    fn zero_window(&mut self, ply: i16, mut depth: i16, beta: Score, last_null: bool) -> Score {
+    fn zero_window(&mut self, ply: i16, mut depth: i16, mut beta: Score, last_null: bool) -> Score {
         if depth <= 0 {
             return self.qsearch(ply, 0, beta - 1, beta);
         }
@@ -449,9 +467,8 @@ impl<'a> Searcher<'a> {
             return score;
         }
 
-        // Mate distance pruning
-        if max(beta - 1, self.checkmate_score(ply)) >= min(-self.checkmate_score(ply + 1), beta) {
-            return max(beta - 1, self.checkmate_score(ply));
+        if let Some(score) = self.mate_distance_pruning(ply, &mut (beta - 1), &mut beta) {
+            return score;
         }
 
         let current_eval = eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
@@ -535,8 +552,12 @@ impl<'a> Searcher<'a> {
         beta - 1
     }
 
-    fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, beta: Score) -> Score {
+    fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score) -> Score {
         if let Some(score) = self.break_conditions(depth, alpha, beta) {
+            return score;
+        }
+
+        if let Some(score) = self.mate_distance_pruning(ply, &mut alpha, &mut beta) {
             return score;
         }
 
