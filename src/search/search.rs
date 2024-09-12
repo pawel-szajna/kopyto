@@ -202,18 +202,19 @@ impl<'a> Searcher<'a> {
         } else {
             moves_generation::generate_all(&self.board)
         };
+        let killer_table_depth = if (depth >= 0) && (depth < (MAX_DEPTH - 1)) { depth } else { MAX_DEPTH - 1 } as usize;
         let weights = moves_generation::order(
             &self.board,
             &moves,
             self.transpositions.get_move(self.board.key()),
-            &self.killers[if depth > 0 { depth } else { MAX_DEPTH - 1 } as usize],
+            &self.killers[killer_table_depth],
             &self.history[self.board.side_to_move()]);
         MoveList::new(moves, weights)
     }
 
-    fn break_conditions(&mut self, depth: i16, alpha: Score, beta: Score) -> Option<Score> {
-        if depth == self.depth {
-            return None; // do not exit early from search root
+    fn break_conditions(&mut self, depth: i16, alpha: Score, beta: Score, root: bool) -> Option<Score> {
+        if root {
+            return None;
         }
 
         if self.out_of_time() {
@@ -353,7 +354,10 @@ impl<'a> Searcher<'a> {
                 consecutive_evals = 0;
             }
 
-            if consecutive_evals > 8 && abs_eval.abs() >= self.checkmate_score(MAX_DEPTH).abs() {
+            let too_many_consecutive_checkmates = consecutive_evals > 8 && abs_eval.abs() >= self.checkmate_score(MAX_DEPTH).abs();
+            let too_many_consecutive_draws = consecutive_evals > 12 && abs_eval == 0;
+
+            if too_many_consecutive_checkmates || too_many_consecutive_draws {
                 break;
             }
 
@@ -389,7 +393,7 @@ impl<'a> Searcher<'a> {
             return self.qsearch(ply, 0, alpha, beta);
         }
 
-        if let Some(score) = self.break_conditions(depth, alpha, beta) {
+        if let Some(score) = self.break_conditions(depth, alpha, beta, root) {
             return score;
         }
 
@@ -466,7 +470,7 @@ impl<'a> Searcher<'a> {
             return self.qsearch(ply, 0, beta - 1, beta);
         }
 
-        if let Some(score) = self.break_conditions(depth, beta - 1, beta) {
+        if let Some(score) = self.break_conditions(depth, beta - 1, beta, false) {
             return score;
         }
 
@@ -540,7 +544,7 @@ impl<'a> Searcher<'a> {
             self.board.unmake_move();
 
             if eval >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), m);
+                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), NULL_MOVE);
                 self.store_killer(depth, m);
                 return beta;
             }
@@ -552,7 +556,7 @@ impl<'a> Searcher<'a> {
     }
 
     fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score) -> Score {
-        if let Some(score) = self.break_conditions(depth, alpha, beta) {
+        if let Some(score) = self.break_conditions(depth, alpha, beta, false) {
             return score;
         }
 
