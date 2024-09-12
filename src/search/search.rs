@@ -415,7 +415,6 @@ impl<'a> Searcher<'a> {
         for m in moves {
             self.board.make_move(m.clone());
 
-            let key = self.board.key();
             let score = match move_counter > 0 {
                 false => -self.negamax(ply + 1, depth - 1, -beta, -alpha, false),
                 true => {
@@ -429,6 +428,7 @@ impl<'a> Searcher<'a> {
                     score
                 }
             };
+
             self.board.unmake_move();
 
             if self.time_hit {
@@ -436,7 +436,7 @@ impl<'a> Searcher<'a> {
             }
 
             if score >= beta {
-                self.transpositions.set(key, depth, TableScore::LowerBound(beta), m);
+                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), m);
                 self.store_killer(depth, m);
                 return beta;
             }
@@ -545,6 +545,7 @@ impl<'a> Searcher<'a> {
             self.board.unmake_move();
 
             if eval >= beta {
+                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), m);
                 self.store_killer(depth, m);
                 return beta;
             }

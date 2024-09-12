@@ -65,11 +65,25 @@ impl Transpositions {
     pub fn set(&mut self, hash: u64, depth: i16, score: TableScore, m: Move) {
         let idx = hash as usize % self.length;
         if self.scores[idx].hash != hash || self.scores[idx].depth <= depth {
-            self.scores[hash as usize % self.length] = Entry {
-                hash,
-                depth,
-                score,
-                m,
+            if match score {
+                TableScore::Exact(_) => true,
+                TableScore::LowerBound(score) => match self.scores[idx].score {
+                    TableScore::Exact(_) => false,
+                    TableScore::UpperBound(_) => true,
+                    TableScore::LowerBound(old_score) => score < old_score,
+                },
+                TableScore::UpperBound(score) => match self.scores[idx].score {
+                    TableScore::Exact(_) => false,
+                    TableScore::LowerBound(_) => true,
+                    TableScore::UpperBound(old_score) => score > old_score,
+                },
+            } {
+                self.scores[hash as usize % self.length] = Entry {
+                    hash,
+                    depth,
+                    score,
+                    m,
+                }
             }
         }
     }
