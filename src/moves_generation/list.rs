@@ -10,6 +10,11 @@ impl MoveList {
     pub fn is_empty(&self) -> bool {
         self.moves.is_empty()
     }
+
+    #[allow(dead_code)]
+    pub fn contains(&self, m: &Move) -> bool {
+        self.moves.contains(m)
+    }
 }
 
 pub struct MoveListIterator {

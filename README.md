@@ -31,7 +31,7 @@ A binary should appear in `target/release` directory.
         * MVV-LVA
         * killer moves
         * history heuristic
-    * ~~Check extensions~~ (-1.4±23.6)
+    * Check extensions (12.0±21.1)
     * Null move pruning (93.2±27.6)
     * Reverse futility pruning (26.1±21.6)
     * Mate distance pruning

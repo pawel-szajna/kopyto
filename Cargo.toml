@@ -12,6 +12,3 @@ scanner-rust = "=2.0.17"
 
 [profile.release]
 debug = true
-
-[features]
-check_extension = []

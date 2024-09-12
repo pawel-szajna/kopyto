@@ -380,7 +380,11 @@ impl<'a> Searcher<'a> {
         best_move
     }
 
-    fn negamax(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score, root: bool) -> Score {
+    fn negamax(&mut self, ply: i16, mut depth: i16, mut alpha: Score, mut beta: Score, root: bool) -> Score {
+        if self.board.in_check() {
+            depth += 1;
+        }
+
         if depth <= 0 {
             return self.qsearch(ply, 0, alpha, beta);
         }
@@ -404,13 +408,6 @@ impl<'a> Searcher<'a> {
         let mut best = NULL_MOVE;
         let mut found_exact = false;
         let mut move_counter = 0;
-
-        #[cfg(feature = "check_extension")] // This is fucking ridiculous
-        let mut depth = depth;
-        #[cfg(feature = "check_extension")]
-        if self.board.in_check() {
-            depth += 1;
-        }
 
         for m in moves {
             self.board.make_move(m.clone());
@@ -461,6 +458,10 @@ impl<'a> Searcher<'a> {
     }
 
     fn zero_window(&mut self, ply: i16, mut depth: i16, mut beta: Score, last_null: bool) -> Score {
+        if self.board.in_check() {
+            depth += 1;
+        }
+
         if depth <= 0 {
             return self.qsearch(ply, 0, beta - 1, beta);
         }
@@ -526,12 +527,6 @@ impl<'a> Searcher<'a> {
 
         if depth <= 0 {
             return self.qsearch(ply, 0, beta - 1, beta);
-        }
-
-        // Check extension
-        #[cfg(feature = "check_extension")]
-        if self.board.in_check() {
-            depth += 1;
         }
 
         let mut move_counter = 0;
