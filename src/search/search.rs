@@ -164,7 +164,7 @@ impl<'a> Searcher<'a> {
             m if m < 4 => 25,
             m if m < 6 => 12,
             _ => 8,
-        };
+        } * if side.choose(options.white_increment, options.black_increment) > 0 { 1 } else { 2 };
 
         let result = (our_time / divider + max(0, time_advantage_modifier)) as u128;
 
