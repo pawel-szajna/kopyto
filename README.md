@@ -1,4 +1,15 @@
+<div align="center">
+
 # kopyto
+
+_A chess engine_
+
+![Lichess bullet ranking](https://lichess-shield.vercel.app/api?username=kopyto_dev&format=bullet)
+![Lichess blitz ranking](https://lichess-shield.vercel.app/api?username=kopyto_dev&format=blitz)
+![Lichess rapid ranking](https://lichess-shield.vercel.app/api?username=kopyto_dev&format=rapid)
+</div>
+
+---
 
 Chess engine experiment which perhaps is now slowly turning out maybe to
 be just a chess  engine. It communicates using the UCI interface. It also
