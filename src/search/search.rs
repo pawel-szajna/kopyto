@@ -4,11 +4,12 @@ use std::time::{Duration, SystemTime};
 use rand::Rng;
 use rand::seq::SliceRandom;
 use crate::board::{Board, FenProducer};
+use crate::eval::NN;
 use crate::moves_generation;
 use crate::moves_generation::MoveList;
 use crate::search::checks::Checks;
-use crate::search::eval::{Score, Verbosity};
-use crate::search::{book, eval, weights, Options};
+use crate::search::eval::Score;
+use crate::search::{book, weights, Options};
 use crate::transpositions::{TableScore, Transpositions};
 use crate::types::{Bitboard, Move, Piece, Side};
 
@@ -22,6 +23,7 @@ const CAPTURES_ONLY: bool = true;
 pub struct Searcher<'a> {
     board: Board,
     transpositions: &'a mut Transpositions,
+    nn: &'a NN,
 
     book: bool,
 
@@ -49,10 +51,11 @@ pub struct Searcher<'a> {
 }
 
 impl<'a> Searcher<'a> {
-    pub fn new(board: Board, transpositions: &'a mut Transpositions, book: bool) -> Self {
+    pub fn new(board: Board, transpositions: &'a mut Transpositions, nn: &'a NN, book: bool) -> Self {
         Self {
             board,
             transpositions,
+            nn,
 
             book,
 
@@ -478,7 +481,7 @@ impl<'a> Searcher<'a> {
             return score;
         }
 
-        let current_eval = eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
+        let current_eval = self.nn.eval(&self.board); // eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
 
         // Razoring
         if !self.board.in_check() && current_eval + 500 + 200 * depth * depth < beta - 1 {
@@ -574,7 +577,7 @@ impl<'a> Searcher<'a> {
             return self.checkmate_score(depth);
         }
 
-        let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
+        let score = self.nn.eval(&self.board) * multiplier; //eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
 
         let delta_margin = weights::BASE_SCORES[Piece::Queen];
 
@@ -622,5 +625,25 @@ impl<'a> Searcher<'a> {
         }
 
         alpha
+    }
+
+    pub fn find_q(&mut self, alpha: Score, beta: Score) -> Option<(String, Score)> {
+        self.qsearch(0, 0, alpha, beta);
+
+        loop {
+            let moves = self.get_moves::<CAPTURES_ONLY>(0);
+            let hash_move = self.transpositions.get_move(self.board.key());
+            if hash_move.is_none() || !moves.contains(unsafe { &hash_move.unwrap_unchecked() }) {
+                break;
+            }
+            self.board.make_move(unsafe{ hash_move.unwrap_unchecked() });
+        }
+
+        if self.board.in_checkmate() {
+            return None;
+        }
+
+        Some((self.board.export_fen(), self.nn.eval(&self.board).clamp(-10000, 10000)))
+        // Some((self.board.export_fen(), eval::evaluate(&self.board, Verbosity::Quiet).clamp(-10000, 10000)))
     }
 }

@@ -3,6 +3,7 @@ use scanner_rust::ScannerAscii;
 use crate::board::{Board, FenConsumer, FenProducer};
 use crate::types::Move;
 use crate::moves_generation::perft;
+use crate::eval;
 use crate::search;
 use crate::search::{Searcher, Verbosity};
 use crate::transpositions::Transpositions;
@@ -12,6 +13,7 @@ pub struct UCI {
     last_position: String,
     book: bool,
     transpositions: Transpositions,
+    nn: eval::NN,
 }
 
 impl UCI {
@@ -21,6 +23,7 @@ impl UCI {
             last_position: String::new(),
             book: false,
             transpositions: Transpositions::new(64),
+            nn: eval::NN::load("/home/szajna/pr/kopyto/tools/weights.txt"),
         }
     }
 
@@ -36,9 +39,11 @@ impl UCI {
                 "stop" => (),
                 "uci" => self.uci(),
                 "eval" => self.eval(),
+                "evalnn" => self.eval_nn(),
                 "isready" => self.isready(),
                 "ucinewgame" => self.ucinewgame(),
                 "currentfen" => println!("{}", self.board.export_fen()),
+                "collect" => self.collect(),
                 cmd if cmd.starts_with("position") => self.position(cmd.strip_prefix("position ")),
                 cmd if cmd.starts_with("go") => self.go(cmd.strip_prefix("go").unwrap_or("").trim()),
                 cmd if cmd.starts_with("setoption") => self.setoption(cmd.strip_prefix("setoption").unwrap_or("").trim()),
@@ -178,13 +183,27 @@ impl UCI {
 
         let mut options = search::Options::new();
         self.parse_go_options(&mut options, cmd);
-        let mut searcher = Searcher::new(self.board.clone(), &mut self.transpositions, self.book);
+        let mut searcher = Searcher::new(self.board.clone(), &mut self.transpositions, &self.nn, self.book);
         let result = searcher.go(options);
 
         println!("bestmove {}", result.to_uci());
     }
 
+    fn collect(&mut self) {
+        println!("collect start {}", self.board.export_fen());
+        let mut searcher = Searcher::new(self.board.clone(), &mut self.transpositions, &self.nn, self.book);
+        let result = searcher.find_q(search::Score::MIN + 1, search::Score::MAX);
+        match result {
+            Some((fen, score)) => println!("collect ok {fen};{score}"),
+            None => println!("collect bad"),
+        }
+    }
+
     fn eval(&self) {
         println!("{}", search::evaluate(&self.board, Verbosity::Verbose));
+    }
+
+    fn eval_nn(&self) {
+        println!("{}", self.nn.eval(&self.board));
     }
 }

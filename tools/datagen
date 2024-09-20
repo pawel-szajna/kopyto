@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+PGN_EXTRACT="pgn-extract"
+ALL_GAMES_PGN="games.pgn"
+GREP_TOOL="rg -N" # can be replaced with just "grep"
+ENGINE="../target/release/kopyto"
+DATA_SET="training_data.txt"
+
+if [ ! -f "${ALL_GAMES_PGN}" ]; then
+    echo "File not found: ${ALL_GAMES_PGN}"
+    exit 1
+fi
+
+OUT=$(mktemp)
+
+"${PGN_EXTRACT}" -s -Wfen "${ALL_GAMES_PGN}" | ${GREP_TOOL} -v "^\[" | ${GREP_TOOL} "\S" | sed 's/c0.*//' | shuf | sed 's/^/position fen /' | sed 's/$/\ncollect/' > ${OUT}
+echo "quit" >> ${OUT}
+cat "${OUT}" | "${ENGINE}" | ${GREP_TOOL} "collect ok" | sed 's/^collect ok //' > "${DATA_SET}"
+

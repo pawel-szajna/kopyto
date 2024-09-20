@@ -1,2 +1,4 @@
 venv
-
+.pickle
+training_data.txt
+net/*.pickle
