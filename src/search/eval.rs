@@ -54,7 +54,7 @@ fn isolated_pawns(pawn_counts: &[i16; 8]) -> i16 {
     let mut count = 0;
 
     for idx in 1..=8 {
-        if guarded_pawn_counts[idx - 1] == 0 && guarded_pawn_counts[idx + 1] == 0 {
+        if guarded_pawn_counts[idx] != 0 && guarded_pawn_counts[idx - 1] == 0 && guarded_pawn_counts[idx + 1] == 0 {
             count += 1;
         }
     }
