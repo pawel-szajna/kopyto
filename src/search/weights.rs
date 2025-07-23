@@ -2,29 +2,14 @@ use std::ops::Index;
 use crate::search::Score;
 use crate::types::Piece;
 
-pub type PieceTable = [Score; 5];
+pub type PieceTable = [Score; 6];
 
 const fn acquire(pt: &PieceTable, piece: Piece) -> &Score {
-    match piece {
-        Piece::King => &0,
-        Piece::Pawn => &pt[0],
-        Piece::Knight => &pt[1],
-        Piece::Bishop => &pt[2],
-        Piece::Rook => &pt[3],
-        Piece::Queen => &pt[4],
-    }
+    &pt[piece as usize]
 }
 
-impl Index<Piece> for PieceTable {
-    type Output = Score;
-
-    fn index(&self, index: Piece) -> &Self::Output {
-        acquire(self, index)
-    }
-}
-
-pub const BASE_SCORES: PieceTable = [50, 300, 320, 500, 900];
-pub const END_SCORES: PieceTable = [80, 300, 320, 500, 900];
+pub const BASE_SCORES: PieceTable = [0, 50, 300, 320, 500, 900];
+pub const END_SCORES: PieceTable = [0, 80, 300, 320, 500, 900];
 
 pub const SIDE_STARTING_MATERIAL: Score =
     *acquire(&BASE_SCORES, Piece::Knight) * 2 +
@@ -50,14 +35,7 @@ impl Index<Piece> for WeightSet {
     type Output = WeightsPerSide;
 
     fn index(&self, index: Piece) -> &Self::Output {
-        match index {
-            Piece::Pawn => &self.pawn,
-            Piece::Knight => &self.knight,
-            Piece::Bishop => &self.bishop,
-            Piece::Rook => &self.rook,
-            Piece::Queen => &self.queen,
-            Piece::King => &self.king,
-        }
+        [&self.king, &self.queen, &self.rook, &self.bishop, &self.knight, &self.pawn][index]
     }
 }
 
