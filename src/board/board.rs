@@ -269,18 +269,10 @@ impl Board {
 
     fn check_side(&self, mask: Bitboard) -> Side {
         if (self.occupied[Side::White] & mask).not_empty() {
-            return Side::White;
+            Side::White
+        } else {
+            Side::Black
         }
-
-        if (self.occupied[Side::Black] & mask).not_empty() {
-            return Side::Black;
-        }
-
-        eprintln!("Board history:");
-        for entry in &self.history {
-            eprintln!("* {}{}", entry.from.peek(), entry.to.peek());
-        }
-        panic!("Internal error: there should be something on {} ({:#066b})", mask.peek(), mask);
     }
 
     pub fn update_hash(&mut self) {
