@@ -22,24 +22,29 @@ impl Bitboard {
         Self { bitboard }
     }
 
+    #[inline(always)]
     pub fn empty(&self) -> bool {
         self.bitboard == 0
     }
 
+    #[inline(always)]
     pub fn not_empty(&self) -> bool {
         !self.empty()
     }
 
+    #[inline(always)]
     pub fn peek(&self) -> Square {
         Square::from(self.bitboard.trailing_zeros() as usize)
     }
 
+    #[inline(always)]
     pub fn pop(&mut self) -> Square {
         let result = self.peek();
         self.bitboard &= self.bitboard - 1;
         result
     }
 
+    #[inline(always)]
     pub fn pieces(&self) -> u32 {
         self.bitboard.count_ones()
     }
@@ -138,6 +143,7 @@ impl<T> ShrAssign<T> for Bitboard where u64: ShrAssign<T> {
 impl Iterator for Bitboard {
     type Item = Square;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         match self.empty() {
             true => None,

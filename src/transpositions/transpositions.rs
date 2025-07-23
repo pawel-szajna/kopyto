@@ -40,17 +40,34 @@ impl Transpositions {
         elems * 1000 / self.length
     }
 
+    #[inline(always)]
+    fn get_entry(&self, hash: u64) -> &Entry {
+        unsafe { self.scores.get_unchecked(hash as usize % self.length) }
+    }
+
     pub fn get_move(&self, hash: u64) -> Option<Move> {
-        let entry = self.scores[hash as usize % self.length];
+        let entry = self.get_entry(hash);
         match entry.hash == hash {
             true => Some(entry.m),
             false => None,
         }
     }
 
+    #[inline(always)]
+    pub fn prefetch(&self, hash: u64) {
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            let scores_ptr = self.scores.as_ptr().add(hash as usize % self.length) as *const i8;
+            core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(scores_ptr);
+        }
+    }
+
     pub fn get(&self, hash: u64, depth: i16, alpha: Score, beta: Score) -> Option<Score> {
-        let entry = self.scores[hash as usize % self.length];
-        if entry.depth < depth || entry.hash != hash {
+        let entry = self.get_entry(hash);
+        if entry.hash != hash {
+            return None;
+        }
+        if entry.depth < depth {
             return None;
         }
 

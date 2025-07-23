@@ -12,3 +12,5 @@ scanner-rust = "=2.0.17"
 
 [profile.release]
 debug = true
+lto = true
+opt-level = 3

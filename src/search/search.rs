@@ -415,6 +415,7 @@ impl<'a> Searcher<'a> {
 
         for m in moves {
             self.board.make_move(m.clone());
+            self.transpositions.prefetch(self.board.key());
 
             let score = match move_counter > 0 {
                 false => -self.negamax(ply + 1, depth - 1, -beta, -alpha, false),
@@ -540,6 +541,7 @@ impl<'a> Searcher<'a> {
             next_depth -= self.late_move_reduction(depth, m, move_counter);
 
             self.board.make_move(m);
+            self.transpositions.prefetch(self.board.key());
             let eval = -self.zero_window(ply + 1, next_depth, 1 - beta, false);
             self.board.unmake_move();
 
@@ -597,6 +599,7 @@ impl<'a> Searcher<'a> {
 
         for capture in moves {
             self.board.make_move(capture);
+            self.transpositions.prefetch(self.board.key());
             let score = -self.qsearch(ply + 1, depth - 1, -beta, -alpha);
             self.board.unmake_move();
 
