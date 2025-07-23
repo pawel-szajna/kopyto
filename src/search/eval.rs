@@ -149,16 +149,33 @@ impl<'a, const VERBOSE: bool> Evaluator<'a, VERBOSE> {
         score
     }
 
-    fn pieces_score(&self, weight_set: &weights::WeightSet) -> Score {
-        let mut score = 0;
-        for side in [Side::White, Side::Black] {
-            let multiplier = multiplier(side);
-            for idx in self.board.occupied[side] {
-                let piece = unsafe { self.board.pieces[side][idx].unwrap_unchecked() };
-                score += multiplier * (weight_set.base[piece] + weight_set[piece][side][idx]);
-            }
+    fn pieces_side_score(&self, weight_set: &weights::WeightSet, side: Side) -> Score {
+        let mut score = weight_set.king[side][self.board.kings[side].peek()];
+        for idx in self.board.queens[side] {
+            score += weight_set.base[Piece::Queen];
+            score += weight_set.queen[side][idx];
+        }
+        for idx in self.board.rooks[side] {
+            score += weight_set.base[Piece::Rook];
+            score += weight_set.rook[side][idx];
+        }
+        for idx in self.board.bishops[side] {
+            score += weight_set.base[Piece::Bishop];
+            score += weight_set.bishop[side][idx];
+        }
+        for idx in self.board.knights[side] {
+            score += weight_set.base[Piece::Knight];
+            score += weight_set.knight[side][idx];
+        }
+        for idx in self.board.pawns[side] {
+            score += weight_set.base[Piece::Pawn];
+            score += weight_set.pawn[side][idx];
         }
         score
+    }
+
+    fn pieces_score(&self, weight_set: &weights::WeightSet) -> Score {
+        self.pieces_side_score(weight_set, Side::White) - self.pieces_side_score(weight_set, Side::Black)
     }
 
     /// Middle-game pieces score calculated from base pieces score and PSQT
