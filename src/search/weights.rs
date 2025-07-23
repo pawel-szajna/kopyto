@@ -8,8 +8,8 @@ const fn acquire(pt: &PieceTable, piece: Piece) -> &Score {
     &pt[piece as usize]
 }
 
-pub const BASE_SCORES: PieceTable = [0, 50, 300, 320, 500, 900];
-pub const END_SCORES: PieceTable = [0, 80, 300, 320, 500, 900];
+pub const BASE_SCORES: PieceTable = [0, 900, 500, 320, 300, 50];
+pub const END_SCORES: PieceTable = [0, 900, 500, 320, 300, 80];
 
 pub const SIDE_STARTING_MATERIAL: Score =
     *acquire(&BASE_SCORES, Piece::Knight) * 2 +
