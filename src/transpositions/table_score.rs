@@ -2,16 +2,17 @@ use crate::search::Score;
 
 #[derive(Clone, Copy, Debug)]
 pub enum TableScore {
+    Unknown,
     Exact(Score),
-    LowerBound(Score),
-    UpperBound(Score),
+    AtLeast(Score),
+    AtMost(Score),
 }
 
 impl TableScore {
     pub fn from_alpha(alpha: Score, is_exact: bool) -> Self {
         match is_exact {
             true => Self::Exact(alpha),
-            false => Self::UpperBound(alpha),
+            false => Self::AtMost(alpha),
         }
     }
 }

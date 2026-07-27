@@ -438,7 +438,7 @@ impl<'a> Searcher<'a> {
             }
 
             if score >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), m);
+                self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), m);
                 self.store_killer(depth, m);
                 return beta;
             }
@@ -546,7 +546,7 @@ impl<'a> Searcher<'a> {
             self.board.unmake_move();
 
             if eval >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), NULL_MOVE);
+                self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), m);
                 self.store_killer(depth, m);
                 return beta;
             }
@@ -608,7 +608,7 @@ impl<'a> Searcher<'a> {
             }
 
             if score >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::LowerBound(beta), capture);
+                self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), capture);
                 return beta;
             }
 
