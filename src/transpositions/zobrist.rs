@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 use rand::RngCore;
 use crate::board::Board;
-use crate::types::{Bitboard, Side};
+use crate::types::{Bitboard, Piece, Side};
 
 type SideKeys = [u64; 64];
 type PieceKeys = [SideKeys; 2];
@@ -122,6 +122,17 @@ impl Zobrist {
         }
 
         key
+    }
+
+    pub fn key_diff(&self, mask: Bitboard, piece: Piece, side: Side) -> u64 {
+        self.key_piece(mask, &match piece {
+            Piece::Pawn => self.keys_pawns,
+            Piece::Knight => self.keys_knights,
+            Piece::Bishop => self.keys_bishops,
+            Piece::Rook => self.keys_rooks,
+            Piece::Queen => self.keys_queens,
+            Piece::King => self.keys_kings,
+        }[side]) ^ self.key_black_to_move
     }
 }
 

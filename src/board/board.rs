@@ -1,6 +1,6 @@
-use crate::{masks, transpositions};
 use crate::moves_generation;
 use crate::types::{Bitboard, Move, Piece, Side};
+use crate::{masks, transpositions};
 
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
@@ -306,7 +306,7 @@ impl Board {
         self.moves = [None, None];
         self.en_passant = Bitboard::EMPTY;
         self.half_moves_clock += 1;
-        self.update_hash();
+        self.hash ^= transpositions::ZOBRIST.key_diff(Bitboard::from_u64(0), Piece::Pawn, Side::Black);
     }
 
     pub fn unmake_null(&mut self) {
@@ -384,10 +384,13 @@ impl Board {
         }
 
         if piece_type == Piece::Pawn && to_mask == self.en_passant {
-            self.remove_piece(opponent, match side {
-                Side::White => to_mask >> 8,
-                Side::Black => to_mask << 8,
-            });
+            self.remove_piece(
+                opponent,
+                match side {
+                    Side::White => to_mask >> 8,
+                    Side::Black => to_mask << 8,
+                },
+            );
         }
 
         self.en_passant = Bitboard::EMPTY;
@@ -413,13 +416,21 @@ impl Board {
         }
 
         history_entry.attacks = self.attacks;
+        if history_entry.capture.is_none()
+            && history_entry.en_passant == self.en_passant
+            && history_entry.castle_kingside == self.castle_kingside
+            && history_entry.castle_queenside == self.castle_queenside
+        {
+            self.hash ^= transpositions::ZOBRIST.key_diff(from_mask | to_mask, piece_type, side);
+        } else {
+            self.hash = transpositions::ZOBRIST.key(self, self.castle_kingside, self.castle_queenside);
+        }
 
         self.history.push(history_entry);
         self.check = None;
         self.checkmate = None;
         self.attacks = [None, None];
         self.moves = [None, None];
-        self.update_hash();
     }
 
     pub fn unmake_move(&mut self) {
@@ -451,7 +462,7 @@ impl Board {
         self.castle_kingside = last_move.castle_kingside;
         self.castle_queenside = last_move.castle_queenside;
 
-        let mut piece_type = unsafe {self.check_piece(side, last_move.to).unwrap_unchecked() };
+        let mut piece_type = unsafe { self.check_piece(side, last_move.to).unwrap_unchecked() };
 
         if last_move.promotion {
             piece_type = Piece::Pawn;
