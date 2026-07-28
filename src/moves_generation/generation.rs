@@ -308,7 +308,7 @@ fn generate_pawns<const CAPTURES_ONLY: bool>(
                 let pawns_mask = enemy_pawn | source;
                 let king_idx = board.kings[side].peek();
                 if (attacks::rook(king_idx, board.any_piece & !pawns_mask) & rook_mask).not_empty() {
-                    break;
+                    continue;
                 }
             }
 
@@ -737,5 +737,24 @@ mod tests {
                 a_move!("d8", "d7"),
             ],
         );
+    }
+
+    #[test]
+    fn en_passant_prevented_when_pawn_is_pinned() {
+        let mut board_a = Board::from_fen("1nrqkbnr/pp1ppppp/8/2P1P3/8/2K5/PP2PPPP/RNBQ1BNR b k - 0 1");
+        board_a.make_move(Move::from_uci("d7d5"));
+        let legal_moves_a = generate::<ALL_MOVES>(&board_a);
+        assert!(legal_moves_a.contains(&a_move!("e5", "e6")));
+        assert!(legal_moves_a.contains(&a_move!("e5", "d6")));
+        assert!(legal_moves_a.contains(&a_move!("c5", "c6")));
+        assert!(!legal_moves_a.contains(&a_move!("c5", "d6")));
+
+        let mut board_b = Board::from_fen("1nkqrbn1/pppp1ppp/8/2P1P3/8/4K3/PP2PPPP/RNBQ1BNR b - - 0 1");
+        board_b.make_move(Move::from_uci("d7d5"));
+        let legal_moves_b = generate::<ALL_MOVES>(&board_b);
+        assert!(legal_moves_b.contains(&a_move!("e5", "e6")));
+        assert!(!legal_moves_b.contains(&a_move!("e5", "d6")));
+        assert!(legal_moves_b.contains(&a_move!("c5", "c6")));
+        assert!(legal_moves_b.contains(&a_move!("c5", "d6")));
     }
 }
