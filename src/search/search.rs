@@ -1,4 +1,5 @@
 use std::cmp::{max, min};
+use std::ops::Neg;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use rand::Rng;
@@ -18,6 +19,22 @@ pub const KILLER_MOVES_STORED: usize = 3;
 
 const ALL_MOVES: bool = false;
 const CAPTURES_ONLY: bool = true;
+
+enum Result {
+    Score(Score),
+    Abort,
+}
+
+impl Neg for Result {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        match self {
+            Self::Score(score) => Self::Score(-score),
+            _ => self,
+        }
+    }
+}
 
 pub struct Searcher<'a> {
     board: Board,
@@ -45,7 +62,6 @@ pub struct Searcher<'a> {
     clock_queries: usize,
     start_time: SystemTime,
     target_time: u128,
-    time_hit: bool,
 }
 
 impl<'a> Searcher<'a> {
@@ -76,7 +92,6 @@ impl<'a> Searcher<'a> {
             clock_queries: 0,
             start_time: SystemTime::now(),
             target_time: 0,
-            time_hit: false,
         }
     }
 
@@ -87,6 +102,10 @@ impl<'a> Searcher<'a> {
 
         let moves = moves_generation::generate_all(&self.board);
         let best = self.transpositions.get_move(self.board.key());
+
+        if self.board.draw_conditions() || self.board.in_checkmate() {
+            return String::new();
+        }
 
         match best {
             Some(m) if moves.contains(&m) => {
@@ -130,10 +149,6 @@ impl<'a> Searcher<'a> {
     }
 
     fn out_of_time(&mut self) -> bool {
-        if self.time_hit {
-            return true;
-        }
-
         // profiler actually said that this was quite costly, but since we are processing
         // millions of nodes per second, checking the clock once every 1000th is probably
         // acceptable
@@ -141,11 +156,9 @@ impl<'a> Searcher<'a> {
         if self.clock_queries > 1000 {
             self.clock_queries = 0;
             if self.start_time.elapsed().unwrap().as_millis() >= self.target_time {
-                self.time_hit = true;
                 return true;
             }
         }
-
         false
     }
 
@@ -212,22 +225,22 @@ impl<'a> Searcher<'a> {
         MoveList::new(moves, weights)
     }
 
-    fn break_conditions(&mut self, depth: i16, alpha: Score, beta: Score, root: bool) -> Option<Score> {
+    fn break_conditions(&mut self, depth: i16, alpha: Score, beta: Score, root: bool) -> Option<Result> {
         if root {
             return None;
         }
 
         if self.out_of_time() {
-            return Some(0);
+            return Some(Result::Abort);
         }
 
         if self.board.draw_conditions() {
-            return Some(0);
+            return Some(Result::Score(0));
         }
 
         if let Some(score) = self.transpositions.get(self.board.key(), depth, alpha, beta) {
             self.tbhits += 1;
-            return Some(score);
+            return Some(Result::Score(score));
         }
 
         None
@@ -237,12 +250,12 @@ impl<'a> Searcher<'a> {
         -(10000 - ply)
     }
 
-    fn no_moves_conditions(&mut self, ply: i16, moves: &MoveList) -> Option<Score> {
+    fn no_moves_conditions(&mut self, ply: i16, moves: &MoveList) -> Option<Result> {
         match moves.is_empty() {
             false => None,
             true => Some(match self.board.in_check() {
-                false => 0, // stalemate
-                true => self.checkmate_score(ply), // checkmate in N
+                false => Result::Score(0), // stalemate
+                true => Result::Score(self.checkmate_score(ply)), // checkmate in N
             })
         }
     }
@@ -312,6 +325,8 @@ impl<'a> Searcher<'a> {
         let mut last_turn = eval;
         let mut last_move = NULL_MOVE;
 
+        let mut timeout = false;
+
         for current_depth in 1..=target_depth {
             let iter_start = SystemTime::now();
             let last_eval = eval;
@@ -322,17 +337,23 @@ impl<'a> Searcher<'a> {
             let window_size = 40;
             let mut aspiration_fail = false;
 
-            eval = self.negamax(0, current_depth, last_eval - window_size, last_eval + window_size, true);
-            if self.time_hit {
-                break;
-            }
+            eval = match self.negamax(0, current_depth, last_eval - window_size, last_eval + window_size, true) {
+                Result::Score(score) => score,
+                Result::Abort => {
+                    timeout = true;
+                    break;
+                },
+            };
 
             if (last_eval - eval).abs() >= window_size {
                 aspiration_fail = true;
-                eval = self.negamax(0, current_depth, Score::MIN + 1, Score::MAX, true);
-                if self.time_hit {
-                    break;
-                }
+                eval = match self.negamax(0, current_depth, Score::MIN + 1, Score::MAX, true) {
+                    Result::Score(score) => score,
+                    Result::Abort => {
+                        timeout = true;
+                        break;
+                    }
+                };
             }
 
             best_move = self.best_move;
@@ -376,7 +397,7 @@ impl<'a> Searcher<'a> {
             println!("info string current position is {}", self.board.export_fen());
         }
 
-        if self.time_hit {
+        if timeout {
             self.print_search_info(self.depth - 1, abs_eval, pv.as_str(), false);
         }
 
@@ -384,7 +405,7 @@ impl<'a> Searcher<'a> {
         best_move
     }
 
-    fn negamax(&mut self, ply: i16, mut depth: i16, mut alpha: Score, mut beta: Score, root: bool) -> Score {
+    fn negamax(&mut self, ply: i16, mut depth: i16, mut alpha: Score, mut beta: Score, root: bool) -> Result {
         if self.board.in_check() {
             depth += 1;
         }
@@ -393,20 +414,20 @@ impl<'a> Searcher<'a> {
             return self.qsearch(ply, 0, alpha, beta);
         }
 
-        if let Some(score) = self.break_conditions(depth, alpha, beta, root) {
-            return score;
+        if let Some(result) = self.break_conditions(depth, alpha, beta, root) {
+            return result;
         }
 
         if let Some(score) = self.mate_distance_pruning(ply, &mut alpha, &mut beta) {
-            return score;
+            return Result::Score(score);
         }
 
         self.nodes += 1;
         self.nodes_n += 1;
         let moves = self.get_moves::<ALL_MOVES>(depth);
 
-        if let Some(score) = self.no_moves_conditions(ply, &moves) {
-            return score;
+        if let Some(result) = self.no_moves_conditions(ply, &moves) {
+            return result;
         }
 
         let mut best = NULL_MOVE;
@@ -417,52 +438,58 @@ impl<'a> Searcher<'a> {
             self.board.make_move(m.clone());
             self.transpositions.prefetch(self.board.key());
 
-            let score = match move_counter > 0 {
+            let result = match move_counter > 0 {
                 false => -self.negamax(ply + 1, depth - 1, -beta, -alpha, false),
                 true => {
                     let mut next_depth = depth - 1;
                     next_depth -= self.late_move_reduction(depth, m, move_counter);
 
-                    let mut score = -self.zero_window(ply + 1, next_depth, -alpha, false);
-                    if score > alpha {
-                        score = -self.negamax(ply + 1, depth - 1, -beta, -alpha, false);
+                    match -self.zero_window(ply + 1, next_depth, -alpha, false) {
+                        Result::Abort => Result::Abort,
+                        Result::Score(score) => {
+                            if score > alpha {
+                                -self.negamax(ply + 1, depth - 1, -beta, -alpha, false)
+                            } else {
+                                Result::Score(score)
+                            }
+                        },
                     }
-                    score
                 }
             };
 
             self.board.unmake_move();
 
-            if self.time_hit {
-                return 0;
-            }
+            match result {
+                Result::Abort => return result,
+                Result::Score(score) => {
+                    if score >= beta {
+                        self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), m);
+                        self.store_killer(depth, m);
+                        return Result::Score(beta);
+                    }
 
-            if score >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), m);
-                self.store_killer(depth, m);
-                return beta;
-            }
+                    if score > alpha {
+                        best = m;
+                        found_exact = true;
+                        alpha = score;
 
-            if score > alpha {
-                best = m;
-                found_exact = true;
-                alpha = score;
+                        if root {
+                            self.best_move = m;
+                        }
+                    }
 
-                if root {
-                    self.best_move = m;
+                    move_counter += 1;
                 }
             }
-
-            move_counter += 1;
         }
 
         self.transpositions.set(self.board.key(), depth, TableScore::from_alpha(alpha, found_exact), best);
         self.seldepth = max(self.seldepth, self.depth - depth);
 
-        alpha
+        Result::Score(alpha)
     }
 
-    fn zero_window(&mut self, ply: i16, mut depth: i16, mut beta: Score, last_null: bool) -> Score {
+    fn zero_window(&mut self, ply: i16, mut depth: i16, mut beta: Score, last_null: bool) -> Result {
         if self.board.in_check() {
             depth += 1;
         }
@@ -471,12 +498,12 @@ impl<'a> Searcher<'a> {
             return self.qsearch(ply, 0, beta - 1, beta);
         }
 
-        if let Some(score) = self.break_conditions(depth, beta - 1, beta, false) {
-            return score;
+        if let Some(result) = self.break_conditions(depth, beta - 1, beta, false) {
+            return result;
         }
 
         if let Some(score) = self.mate_distance_pruning(ply, &mut (beta - 1), &mut beta) {
-            return score;
+            return Result::Score(score);
         }
 
         let current_eval = eval::evaluate(&self.board, Verbosity::Quiet) * self.board.side_to_move().choose(1, -1);
@@ -484,10 +511,12 @@ impl<'a> Searcher<'a> {
         // Razoring
         if !self.board.in_check() && current_eval + 500 + 200 * depth * depth < beta - 1 {
             self.razoring_attempts += 1;
-            let quiescence_eval = self.qsearch(ply, 0, beta - 1, beta);
-            if quiescence_eval < beta - 1 {
-                self.razoring_success += 1;
-                return quiescence_eval;
+            let quiescence_result = self.qsearch(ply, 0, beta - 1, beta);
+            if let Result::Score(quiescence_eval) = quiescence_result {
+                if quiescence_eval < beta - 1 {
+                    self.razoring_success += 1;
+                    return Result::Score(quiescence_eval);
+                }
             }
         }
 
@@ -500,7 +529,7 @@ impl<'a> Searcher<'a> {
             };
 
             if current_eval - margin > beta {
-                return beta;
+                return Result::Score(beta);
             }
         }
 
@@ -512,8 +541,10 @@ impl<'a> Searcher<'a> {
             let value = -self.zero_window(ply + 2, depth - null_reduction, 1 - beta, true);
             self.board.unmake_null();
 
-            if value >= beta {
-                return beta;
+            if let Result::Score(score) = value {
+                if score >= beta {
+                    return Result::Score(beta);
+                }
             }
         }
 
@@ -542,28 +573,33 @@ impl<'a> Searcher<'a> {
 
             self.board.make_move(m);
             self.transpositions.prefetch(self.board.key());
-            let eval = -self.zero_window(ply + 1, next_depth, 1 - beta, false);
+            let result = -self.zero_window(ply + 1, next_depth, 1 - beta, false);
             self.board.unmake_move();
 
-            if eval >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), m);
-                self.store_killer(depth, m);
-                return beta;
-            }
+            match result {
+                Result::Abort => return result,
+                Result::Score(eval) => {
+                    if eval >= beta {
+                        self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), m);
+                        self.store_killer(depth, m);
+                        return Result::Score(beta);
+                    }
 
-            move_counter += 1;
+                    move_counter += 1;
+                }
+            }
         }
 
-        beta - 1
+        Result::Score(beta - 1)
     }
 
-    fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score) -> Score {
-        if let Some(score) = self.break_conditions(depth, alpha, beta, false) {
-            return score;
+    fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score) -> Result {
+        if let Some(result) = self.break_conditions(depth, alpha, beta, false) {
+            return result;
         }
 
         if let Some(score) = self.mate_distance_pruning(ply, &mut alpha, &mut beta) {
-            return score;
+            return Result::Score(score);
         }
 
         let side = self.board.side_to_move();
@@ -573,7 +609,7 @@ impl<'a> Searcher<'a> {
         self.nodes_q += 1;
 
         if self.board.in_checkmate() {
-            return self.checkmate_score(depth);
+            return Result::Score(self.checkmate_score(depth));
         }
 
         let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
@@ -582,11 +618,11 @@ impl<'a> Searcher<'a> {
 
         if score + delta_margin < alpha && !self.board.in_check() {
             self.delta_prunes += 1;
-            return alpha;
+            return Result::Score(alpha);
         }
 
         if score >= beta {
-            return beta;
+            return Result::Score(beta);
         }
 
         if score > alpha {
@@ -600,22 +636,23 @@ impl<'a> Searcher<'a> {
         for capture in moves {
             self.board.make_move(capture);
             self.transpositions.prefetch(self.board.key());
-            let score = -self.qsearch(ply + 1, depth - 1, -beta, -alpha);
+            let result = -self.qsearch(ply + 1, depth - 1, -beta, -alpha);
             self.board.unmake_move();
 
-            if self.time_hit {
-                return 0;
-            }
+            match result {
+                Result::Abort => return result,
+                Result::Score(score) => {
+                    if score >= beta {
+                        self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), capture);
+                        return Result::Score(beta);
+                    }
 
-            if score >= beta {
-                self.transpositions.set(self.board.key(), depth, TableScore::AtLeast(beta), capture);
-                return beta;
-            }
-
-            if score > alpha {
-                alpha = score;
-                best = capture;
-                found_exact = true;
+                    if score > alpha {
+                        alpha = score;
+                        best = capture;
+                        found_exact = true;
+                    }
+                }
             }
         }
 
@@ -624,6 +661,6 @@ impl<'a> Searcher<'a> {
             self.seldepth = max(self.seldepth, self.depth - depth);
         }
 
-        alpha
+        Result::Score(alpha)
     }
 }
