@@ -414,10 +414,6 @@ impl<'a> Searcher<'a> {
             return self.qsearch(ply, 0, alpha, beta);
         }
 
-        if let Some(result) = self.break_conditions(depth, alpha, beta, root) {
-            return result;
-        }
-
         if let Some(score) = self.mate_distance_pruning(ply, &mut alpha, &mut beta) {
             return Result::Score(score);
         }
@@ -427,6 +423,10 @@ impl<'a> Searcher<'a> {
         let moves = self.get_moves::<ALL_MOVES>(depth);
 
         if let Some(result) = self.no_moves_conditions(ply, &moves) {
+            return result;
+        }
+
+        if let Some(result) = self.break_conditions(depth, alpha, beta, root) {
             return result;
         }
 
@@ -498,10 +498,6 @@ impl<'a> Searcher<'a> {
             return self.qsearch(ply, 0, beta - 1, beta);
         }
 
-        if let Some(result) = self.break_conditions(depth, beta - 1, beta, false) {
-            return result;
-        }
-
         if let Some(score) = self.mate_distance_pruning(ply, &mut (beta - 1), &mut beta) {
             return Result::Score(score);
         }
@@ -556,10 +552,14 @@ impl<'a> Searcher<'a> {
             return score;
         }
 
-        // Internal iterative deepening
-        if depth > 4 && self.transpositions.get_move(self.board.key()).is_none() {
-            depth -= 2;
+        if let Some(result) = self.break_conditions(depth, beta - 1, beta, false) {
+            return result;
         }
+
+        // Internal iterative deepening
+        // if depth > 4 && self.transpositions.get_move(self.board.key()).is_none() {
+        //     depth -= 2;
+        // }
 
         if depth <= 0 {
             return self.qsearch(ply, 0, beta - 1, beta);
@@ -594,10 +594,6 @@ impl<'a> Searcher<'a> {
     }
 
     fn qsearch(&mut self, ply: i16, depth: i16, mut alpha: Score, mut beta: Score) -> Result {
-        if let Some(result) = self.break_conditions(depth, alpha, beta, false) {
-            return result;
-        }
-
         if let Some(score) = self.mate_distance_pruning(ply, &mut alpha, &mut beta) {
             return Result::Score(score);
         }
@@ -612,24 +608,35 @@ impl<'a> Searcher<'a> {
             return Result::Score(self.checkmate_score(depth));
         }
 
+        if let Some(result) = self.break_conditions(depth, alpha, beta, false) {
+            return result;
+        }
+
         let score = eval::evaluate(&self.board, Verbosity::Quiet) * multiplier;
 
         let delta_margin = weights::BASE_SCORES[Piece::Queen];
 
-        if score + delta_margin < alpha && !self.board.in_check() {
-            self.delta_prunes += 1;
-            return Result::Score(alpha);
+        if !self.board.in_check() {
+            if score + delta_margin < alpha && !self.board.in_check() {
+                self.delta_prunes += 1;
+                return Result::Score(alpha);
+            }
+
+            if score >= beta {
+                return Result::Score(beta);
+            }
+
+            if score > alpha {
+                alpha = score;
+            }
         }
 
-        if score >= beta {
-            return Result::Score(beta);
-        }
+        let moves = if self.board.in_check() {
+            self.get_moves::<ALL_MOVES>(depth)
+        } else {
+            self.get_moves::<CAPTURES_ONLY>(depth)
+        };
 
-        if score > alpha {
-            alpha = score;
-        }
-
-        let moves = self.get_moves::<CAPTURES_ONLY>(depth);
         let mut best = NULL_MOVE;
         let mut found_exact = false;
 
