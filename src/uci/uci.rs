@@ -61,6 +61,7 @@ impl UCI {
 
     fn ucinewgame(&mut self) {
         self.board = Board::new();
+        self.transpositions.clear();
     }
 
     fn setoption(&mut self, option: &str) {

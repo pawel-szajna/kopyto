@@ -36,6 +36,10 @@ impl Transpositions {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.scores.fill(Entry::new());
+    }
+
     pub fn usage(&self) -> usize {
         let elems = self
             .scores
