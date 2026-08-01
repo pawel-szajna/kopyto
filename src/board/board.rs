@@ -467,7 +467,7 @@ impl Board {
     }
 
     pub fn repeated_position(&self) -> bool {
-        self.history.iter().filter(|h| h.hash == self.hash).count() > 2
+        self.history.iter().filter(|h| h.hash == self.hash).count() >= 2
     }
 
     pub fn side_to_move(&self) -> Side {
