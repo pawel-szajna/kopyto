@@ -23,10 +23,10 @@ pub struct MoveListIterator {
 }
 
 impl MoveList {
-    pub fn new(moves: Vec<Move>, weights: Weights) -> Self {
+    pub fn new(moves: &Moves, weights: Weights) -> Self {
         assert_eq!(moves.len(), weights.len());
         Self {
-            moves,
+            moves: moves.clone(),
             weights,
         }
     }

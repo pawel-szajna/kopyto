@@ -209,16 +209,16 @@ impl<'a> Searcher<'a> {
         None
     }
 
-    fn get_moves<const CAPTURES_ONLY: bool>(&mut self, depth: i16) -> MoveList {
+    fn get_moves<const CAPTURES_ONLY: bool>(&self, depth: i16) -> MoveList {
         let moves = if CAPTURES_ONLY {
-            moves_generation::generate_captures(&self.board)
+            &moves_generation::generate_captures(&self.board)
         } else {
-            moves_generation::generate_all(&self.board)
+            self.board.get_moves()
         };
         let killer_table_depth = if (depth >= 0) && (depth < (MAX_DEPTH - 1)) { depth } else { MAX_DEPTH - 1 } as usize;
         let weights = moves_generation::order(
             &self.board,
-            &moves,
+            moves,
             self.transpositions.get_move(self.board.key()),
             &self.killers[killer_table_depth],
             &self.history[self.board.side_to_move()]);

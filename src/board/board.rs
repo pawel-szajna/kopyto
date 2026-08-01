@@ -1,11 +1,21 @@
+use std::cell::OnceCell;
 use crate::moves_generation;
 use crate::types::{Bitboard, Move, Piece, Side};
 use crate::{masks, transpositions};
+use crate::moves_generation::Moves;
 
 pub type ColorBitboard = [Bitboard; 2];
 pub type ColorBool = [bool; 2];
 pub type PieceList = [Option<Piece>; 64];
 pub type ColorPieceList = [PieceList; 2];
+
+#[derive(Clone, Default)]
+struct Cache {
+    check: OnceCell<bool>,
+    checkmate: OnceCell<bool>,
+    attacks: [OnceCell<Bitboard>; 2],
+    moves: OnceCell<Moves>,
+}
 
 #[derive(Clone)]
 struct History {
@@ -17,9 +27,7 @@ struct History {
     half_moves: u32,
     promotion: bool,
     en_passant: Bitboard,
-    attacks: [Option<Bitboard>; 2],
-    check: Option<bool>,
-    checkmate: Option<bool>,
+    cache: Cache,
     hash: u64,
 }
 
@@ -31,8 +39,7 @@ impl History {
         castle_queenside: ColorBool,
         half_moves: u32,
         en_passant: Bitboard,
-        check: Option<bool>,
-        checkmate: Option<bool>,
+        cache: Cache,
         hash: u64,
     ) -> Self {
         Self {
@@ -44,9 +51,7 @@ impl History {
             half_moves,
             promotion: false,
             en_passant,
-            attacks: [None, None],
-            check,
-            checkmate,
+            cache,
             hash,
         }
     }
@@ -77,10 +82,7 @@ pub struct Board {
     pub full_moves_count: u32,
 
     pub en_passant: Bitboard,
-    check: Option<bool>,
-    checkmate: Option<bool>,
-    pub attacks: [Option<Bitboard>; 2],
-    pub moves: [Option<Vec<Move>>; 2],
+    cache: Cache,
 }
 
 impl Board {
@@ -109,10 +111,7 @@ impl Board {
             full_moves_count: 1,
 
             en_passant: Bitboard::EMPTY,
-            check: None,
-            checkmate: None,
-            attacks: [None, None],
-            moves: [None, None],
+            cache: Cache::default(),
         }
     }
 
@@ -220,43 +219,33 @@ impl Board {
         !(self.any_piece & mask).empty()
     }
 
-    pub fn get_attacks(&mut self, side: Side) -> Bitboard {
-        match self.attacks[side] {
-            Some(value) => value,
-            None => {
-                let attacks = moves_generation::real_attack_mask(self, side);
-                self.attacks[side] = Some(attacks);
-                attacks
-            }
-        }
+    pub fn get_attacks(&self, side: Side) -> Bitboard {
+        *self.cache.attacks[side].get_or_init(|| {
+            moves_generation::real_attack_mask(self, side)
+        })
     }
 
-    pub fn in_check(&mut self) -> bool {
-        match self.check {
-            Some(value) => value,
-            None => {
-                let side = self.side_to_move();
-                let opponent_attacks = self.get_attacks(!side);
-                let is_in_check = (self.kings[side] & opponent_attacks).not_empty();
-                self.check = Some(is_in_check);
-                is_in_check
-            }
-        }
+    pub fn in_check(&self) -> bool {
+        *self.cache.check.get_or_init(|| {
+            let side = self.side_to_move();
+            let opponent_attacks = self.get_attacks(!side);
+            (self.kings[side] & opponent_attacks).not_empty()
+        })
     }
 
-    #[allow(dead_code)]
-    pub fn in_checkmate(&mut self) -> bool {
-        match self.checkmate {
-            Some(value) => value,
-            None => {
-                let is_in_checkmate = match self.in_check() {
-                    false => false,
-                    true => moves_generation::generate_all(self).is_empty(),
-                };
-                self.checkmate = Some(is_in_checkmate);
-                is_in_checkmate
+    pub fn in_checkmate(&self) -> bool {
+        *self.cache.checkmate.get_or_init(|| {
+            match self.in_check() {
+                false => false,
+                true => self.get_moves().is_empty(),
             }
-        }
+        })
+    }
+
+    pub fn get_moves(&self) -> &Moves {
+        self.cache.moves.get_or_init(|| {
+            moves_generation::generate_all(self)
+        })
     }
 
     pub fn check_piece(&self, side: Side, mask: Bitboard) -> Option<Piece> {
@@ -280,19 +269,16 @@ impl Board {
     }
 
     pub fn make_null(&mut self) {
-        let history_entry = History::new(
+        self.history.push(History::new(
             Bitboard::EMPTY,
             Bitboard::EMPTY,
             self.castle_kingside,
             self.castle_queenside,
             self.half_moves_clock,
             self.en_passant,
-            self.check,
-            self.checkmate,
+            std::mem::take(&mut self.cache),
             self.hash,
-        );
-
-        self.history.push(history_entry);
+        ));
 
         self.current_color = !self.current_color;
 
@@ -300,10 +286,6 @@ impl Board {
             self.full_moves_count += 1;
         }
 
-        self.check = None;
-        self.checkmate = None;
-        self.attacks = [None, None];
-        self.moves = [None, None];
         self.en_passant = Bitboard::EMPTY;
         self.half_moves_clock += 1;
         self.hash ^= transpositions::ZOBRIST.key_diff(Bitboard::from_u64(0), Piece::Pawn, Side::Black);
@@ -318,10 +300,7 @@ impl Board {
 
         self.half_moves_clock = history_entry.half_moves;
         self.current_color = !self.current_color;
-        self.check = history_entry.check;
-        self.checkmate = history_entry.checkmate;
-        self.attacks = history_entry.attacks;
-        self.moves = [None, None];
+        self.cache = history_entry.cache;
         self.en_passant = history_entry.en_passant;
         self.hash = history_entry.hash;
     }
@@ -340,8 +319,7 @@ impl Board {
             self.castle_queenside,
             self.half_moves_clock,
             self.en_passant,
-            self.check,
-            self.checkmate,
+            std::mem::take(&mut self.cache),
             self.hash,
         );
 
@@ -415,7 +393,6 @@ impl Board {
             self.full_moves_count += 1;
         }
 
-        history_entry.attacks = self.attacks;
         if history_entry.capture.is_none()
             && history_entry.en_passant == self.en_passant
             && history_entry.castle_kingside == self.castle_kingside
@@ -427,17 +404,9 @@ impl Board {
         }
 
         self.history.push(history_entry);
-        self.check = None;
-        self.checkmate = None;
-        self.attacks = [None, None];
-        self.moves = [None, None];
     }
 
     pub fn unmake_move(&mut self) {
-        if self.history.is_empty() {
-            panic!("Cannot unmake move with no moves");
-        }
-
         let last_move = unsafe { self.history.pop().unwrap_unchecked() };
         let side = self.check_side(last_move.to);
         let opponent = !side;
@@ -493,10 +462,7 @@ impl Board {
         if self.current_color.is_black() {
             self.full_moves_count -= 1;
         }
-        self.check = last_move.check;
-        self.checkmate = last_move.checkmate;
-        self.attacks = last_move.attacks;
-        self.moves = [None, None];
+        self.cache = last_move.cache;
         self.hash = last_move.hash;
     }
 
