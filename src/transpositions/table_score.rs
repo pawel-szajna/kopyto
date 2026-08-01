@@ -15,4 +15,8 @@ impl TableScore {
             false => Self::AtMost(alpha),
         }
     }
+
+    pub fn is_set(&self) -> bool {
+        !matches!(self, Self::Unknown)
+    }
 }

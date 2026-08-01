@@ -61,14 +61,7 @@ impl Transpositions {
 
     pub fn get_move(&self, hash: u64) -> Option<Move> {
         let entry = self.get_entry(hash);
-        match entry.hash == hash
-            && match entry.score {
-                TableScore::Unknown => false,
-                _ => true,
-            } {
-            true => Some(entry.m),
-            false => None,
-        }
+        (entry.hash == hash && entry.score.is_set()).then_some(entry.m)
     }
 
     #[inline(always)]
@@ -118,7 +111,7 @@ impl Transpositions {
                         },
                     }
             }
-            false => !matches!(score, TableScore::Unknown) && match old.score {
+            false => score.is_set() && match old.score {
                 TableScore::Exact(_) => old.depth < depth,
                 _ => old.depth <= depth,
             },
